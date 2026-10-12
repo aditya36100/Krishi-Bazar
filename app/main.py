@@ -1,5 +1,5 @@
 import datetime, math, os
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -13,46 +13,62 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CSV = os.getenv("KS_PRICES", os.path.join(BASE, "data", "prices.csv"))
 MARGIN = float(os.getenv("KS_MARGIN", "0.15"))  # direct-sale premium; calibrate from real transactions
+MIN_KG = float(os.getenv("KS_MIN_KG", "100"))  # minimum listing and order size
 ACTIONS = {"fund": "FUNDED", "harvest": "HARVESTED", "ship": "SHIPPED", "deliver": "DELIVERED",
            "release": "RELEASED", "dispute": "DISPUTED", "refund": "REFUNDED", "cancel": "CANCELLED"}
 
 class User(BaseModel):
-    name: str; role: str; loc: str = ""
+    name: str; role: str; loc: str = ""; buyer_type: str = ""
 class Listing(BaseModel):
-    farmer_id: int; crop: str; qty: float; harvest_date: str; price: float; loc: str = ""
+    farmer_id: int; crop: str; qty: float; price: float; variety: str = ""; harvest_date: str = ""; loc: str = ""
 class Order(BaseModel):
     listing_id: int; buyer_id: int; qty: float; deposit_pct: float = 0.3
 
 def _forecast(crop, harvest_date):
-    days = (datetime.date.fromisoformat(harvest_date) - datetime.date.today()).days
+    days = (datetime.date.fromisoformat(harvest_date) - datetime.date.today()).days if harvest_date else 7
     f = pricing.forecast(pricing.weekly(pricing.load(CSV), crop), max(1, math.ceil(days / 7)))
     f["suggested"] = round(f["point"] * (1 + MARGIN), 2)
     return f
 
 @app.post("/users")
 def add_user(u: User):
+    if u.role not in ("farmer", "buyer"):
+        raise HTTPException(400, "role must be farmer or buyer")
+    if not u.name.strip():
+        raise HTTPException(400, "name is required")
+    if u.role == "buyer" and u.buyer_type not in BUYER_MIN_KG:
+        raise HTTPException(400, "Please choose what you will use the crop for: " + ", ".join(BUYER_MIN_KG))
     with conn() as c:
-        return {"id": c.execute("INSERT INTO users(name,role,loc) VALUES(?,?,?)", (u.name, u.role, u.loc)).lastrowid}
+        return {"id": c.execute("INSERT INTO users(name,role,loc,buyer_type) VALUES(?,?,?,?)",
+                                (u.name.strip(), u.role, u.loc.strip(), u.buyer_type)).lastrowid}
 
-@app.post("/listings")
-def add_listing(l: Listing):
+def add_listing(l: Listing):  # internal: listings are now created only when the admin approves a ticket
+    if l.qty < MIN_KG:
+        raise HTTPException(400, f"Minimum quantity is {MIN_KG:g} kg")
+    if l.price <= 0 or not l.variety.strip():
+        raise HTTPException(400, "Price and crop variety are required")
     try:
         ref = _forecast(l.crop, l.harvest_date)["point"]
     except Exception:
         ref = None
     with conn() as c:
-        cur = c.execute("INSERT INTO listings(farmer_id,crop,qty,harvest_date,price,loc,mandi_ref) VALUES(?,?,?,?,?,?,?)",
-                        (l.farmer_id, l.crop, l.qty, l.harvest_date, l.price, l.loc, ref))
+        cur = c.execute("INSERT INTO listings(farmer_id,crop,variety,qty,harvest_date,price,loc,mandi_ref) VALUES(?,?,?,?,?,?,?,?)",
+                        (l.farmer_id, l.crop, l.variety.strip(), l.qty, l.harvest_date, l.price, l.loc, ref))
         return {"id": cur.lastrowid, "mandi_ref": ref}
 
 @app.get("/listings")
-def listings(crop: str = "", loc: str = ""):
+def listings(crop: str = "", loc: str = "", view: str = "farmer", buyer_id: int = 0):
+    if view == "buyer" and not _sub(buyer_id)["active"]:
+        raise HTTPException(402, "Active subscription required to view listings")
     with conn() as c:
         rows = c.execute("SELECT l.*, u.name farmer_name FROM listings l LEFT JOIN users u ON u.id=l.farmer_id "
                          "WHERE l.qty>0 AND l.status='ACTIVE' AND (?='' OR l.crop=?) AND (?='' OR l.loc=?)", (crop, crop, loc, loc)).fetchall()
     out = []
     for r in rows:
-        d = dict(r); d["farmer_reliability"] = reliability.score(r["farmer_id"]); out.append(d)
+        d = dict(r); d["farmer_reliability"] = reliability.score(r["farmer_id"])
+        if view == "buyer":
+            d["price"] = round(d["price"] * (1 + escrow.BUYER_MARKUP), 2)  # buyers only ever see the marked-up price
+        out.append(d)
     return out
 
 @app.post("/orders")
@@ -63,8 +79,13 @@ def place(o: Order):
             raise HTTPException(404, "listing not found")
         if o.qty <= 0 or o.qty > l["qty"]:
             raise HTTPException(400, "invalid quantity")
-        oid = c.execute("INSERT INTO orders(listing_id,buyer_id,qty,amount,deposit_pct,created) VALUES(?,?,?,?,?,?)",
-                        (o.listing_id, o.buyer_id, o.qty, round(o.qty * l["price"], 2), o.deposit_pct,
+        if not _sub(o.buyer_id)["active"]:
+            raise HTTPException(402, "Active subscription required to place orders")
+        mn = min(_buyer_min(o.buyer_id), l["qty"])
+        if o.qty < mn:
+            raise HTTPException(400, f"Minimum order is {mn:g} kg for your buyer type")
+        oid = c.execute("INSERT INTO orders(listing_id,buyer_id,qty,amount,buyer_amount,deposit_pct,created) VALUES(?,?,?,?,?,?,?)",
+                        (o.listing_id, o.buyer_id, o.qty, round(o.qty * l["price"], 2), round(o.qty * l["price"] * (1 + escrow.BUYER_MARKUP), 2), o.deposit_pct,
                          datetime.datetime.now().isoformat())).lastrowid
         c.execute("UPDATE listings SET qty=qty-? WHERE id=?", (o.qty, o.listing_id))
     escrow.start(oid)
@@ -101,9 +122,13 @@ def fault(oid: int, party_id: int):  # admin marks the party at fault after a di
     return {"ok": True}
 
 @app.get("/orders/{oid}/ledger")
-def ledger(oid: int):
+def ledger(oid: int, view: str = "admin"):
     with conn() as c:
-        return [dict(r) for r in c.execute("SELECT * FROM ledger WHERE order_id=? ORDER BY id", (oid,))]
+        rows = [dict(r) for r in c.execute("SELECT * FROM ledger WHERE order_id=? ORDER BY id", (oid,))]
+    if view != "admin":
+        for r in rows:
+            r["detail"] = "(admin only)"
+    return rows
 
 @app.get("/ledger/verify")
 def verify():
@@ -111,7 +136,7 @@ def verify():
     return {"intact": ok, "first_bad_id": bad}
 
 @app.get("/price/{crop}")
-def price(crop: str, harvest_date: str):
+def price(crop: str, harvest_date: str = ""):
     try:
         return _forecast(crop, harvest_date)
     except FileNotFoundError:
@@ -130,8 +155,10 @@ def summary():
         gmv = g("SELECT COALESCE(SUM(amount),0) FROM orders WHERE state='RELEASED'")
         prem = g("SELECT AVG(l.price/l.mandi_ref-1)*100 FROM orders o JOIN listings l ON l.id=o.listing_id "
                  "WHERE o.state='RELEASED' AND l.mandi_ref>0")
+        bp = g(f"SELECT COALESCE(SUM(COALESCE(buyer_amount, amount*{1 + escrow.BUYER_MARKUP})),0) FROM orders WHERE state='RELEASED'")
+        subs = g("SELECT COALESCE(SUM(price),0) FROM subscriptions")
         out = {"users": g("SELECT COUNT(*) FROM users"), "orders": g("SELECT COUNT(*) FROM orders"),
-               "gmv_released": gmv, "platform_fee": round(gmv * escrow.FEE, 2),
+               "gmv_released": gmv, "platform_fee": round(gmv * escrow.FEE, 2), "buyer_margin": round(bp - gmv, 2), "subscription_revenue": subs,
                "avg_farmer_premium_pct": None if prem is None else round(prem, 1)}
     out["ledger_intact"] = escrow.verify_chain()[0]
     return out
@@ -160,12 +187,21 @@ def users():
         return [dict(r) for r in c.execute("SELECT * FROM users")]
 
 @app.get("/orders")
-def orders():
+def orders(view: str = "admin"):
     with conn() as c:
-        return [dict(r) for r in c.execute(
-            "SELECT o.*, l.crop, l.price, l.farmer_id, fu.name farmer, bu.name buyer FROM orders o "
+        rows = [dict(r) for r in c.execute(
+            "SELECT o.*, l.crop, l.variety, l.price, l.farmer_id, fu.name farmer, bu.name buyer FROM orders o "
             "JOIN listings l ON l.id=o.listing_id LEFT JOIN users fu ON fu.id=l.farmer_id "
             "LEFT JOIN users bu ON bu.id=o.buyer_id ORDER BY o.id DESC")]
+    for d in rows:
+        bp = d.get("buyer_amount") or round(d["amount"] * (1 + escrow.BUYER_MARKUP), 2)
+        if view == "buyer":
+            d["amount"] = bp; d.pop("buyer_amount", None); d.pop("price", None)
+        elif view == "farmer":
+            d["payout"] = round(d["amount"] * (1 - escrow.FEE), 2); d.pop("buyer_amount", None)
+        else:
+            d["buyer_amount"] = bp
+    return rows
 
 
 @app.delete("/listings/{lid}")
@@ -176,3 +212,242 @@ def withdraw(lid: int):
             raise HTTPException(400, f"{n} active order(s) on this listing - cancel or refund them first")
         c.execute("UPDATE listings SET status='WITHDRAWN' WHERE id=?", (lid,))
     return {"id": lid, "status": "WITHDRAWN"}
+
+
+PLANS = {"monthly": ("Monthly", 999, 30), "yearly": ("Yearly", 9999, 365)}  # placeholder prices - decide with your mentor
+
+def _sub(buyer_id):
+    with conn() as c:
+        r = c.execute("SELECT * FROM subscriptions WHERE buyer_id=? ORDER BY ends DESC LIMIT 1", (buyer_id,)).fetchone()
+    if r and r["ends"] >= datetime.date.today().isoformat():
+        return {"active": True, "plan": r["plan"], "ends": r["ends"]}
+    return {"active": False, "plan": None, "ends": r["ends"] if r else None}
+
+@app.get("/subscription/{buyer_id}")
+def subscription(buyer_id: int):
+    return {**_sub(buyer_id), "min_order": _buyer_min(buyer_id), "plans": {k: {"name": v[0], "price": v[1], "days": v[2]} for k, v in PLANS.items()}}
+
+@app.post("/subscribe/{buyer_id}/{plan}")
+def subscribe(buyer_id: int, plan: str):  # demo payment: no real money moves
+    if plan not in PLANS:
+        raise HTTPException(404, "unknown plan")
+    name, price, days = PLANS[plan]
+    cur = _sub(buyer_id)
+    start = datetime.date.fromisoformat(cur["ends"]) if cur["active"] else datetime.date.today()
+    with conn() as c:
+        c.execute("INSERT INTO subscriptions(buyer_id,plan,price,starts,ends) VALUES(?,?,?,?,?)",
+                  (buyer_id, name, price, start.isoformat(), (start + datetime.timedelta(days=days)).isoformat()))
+    return _sub(buyer_id)
+
+
+BUYER_MIN_KG = {"Restaurant": 50, "Hotel": 100, "Supermarket": 25, "Exporter": 500, "Personal use": 5, "Other": 50}  # placeholders
+GRADE_FACTOR = {"A": 1.10, "B": 1.00, "C": 0.90}  # placeholders: grade -> multiple of the current mandi price
+
+def _buyer_min(buyer_id):
+    with conn() as c:
+        r = c.execute("SELECT buyer_type FROM users WHERE id=?", (buyer_id,)).fetchone()
+    return BUYER_MIN_KG.get((r["buyer_type"] if r else "") or "", MIN_KG)
+
+def _latest_mandi(crop):
+    try:
+        d = pricing.load(CSV)
+    except Exception:
+        return None
+    m = d[d["commodity"].str.lower() == crop.strip().lower()]
+    if m.empty:
+        return None
+    s = m.set_index("date")["modal_price"].resample("W").mean().dropna()
+    return (round(float(s.iloc[-1]), 2), str(s.index[-1].date())) if len(s) else None
+
+@app.get("/mandi/{crop}")
+def mandi(crop: str):
+    r = _latest_mandi(crop)
+    if not r:
+        return {"latest": None}
+    return {"latest": r[0], "as_of": r[1], "suggest": {g: round(r[0] * f, 2) for g, f in GRADE_FACTOR.items()}}
+
+class Ticket(BaseModel):
+    farmer_id: int; crop: str; qty: float; location: str; phone: str; pref_date: str; pref_slot: str
+    variety: str = ""; alt_phone: str = ""; notes: str = ""
+
+class Approve(BaseModel):
+    grade: str; qty: float; price: float; agreed: bool = False; variety: str = ""
+
+@app.post("/tickets")
+def raise_ticket(t: Ticket):
+    if t.qty < MIN_KG:
+        raise HTTPException(400, f"Minimum quantity is {MIN_KG:g} kg")
+    if not t.crop.strip():
+        raise HTTPException(400, "Crop is required")
+    if not t.location.strip():
+        raise HTTPException(400, "Farm location is required")
+    ph = _phone(t.phone)
+    if not ph:
+        raise HTTPException(400, "Enter a valid 10-digit mobile number")
+    alt = _phone(t.alt_phone) if t.alt_phone.strip() else ""
+    if t.alt_phone.strip() and not alt:
+        raise HTTPException(400, "The alternate number is not valid")
+    try:
+        day = datetime.date.fromisoformat(t.pref_date)
+    except ValueError:
+        raise HTTPException(400, "Choose a valid visit date")
+    if day < datetime.date.today():
+        raise HTTPException(400, "The visit date cannot be in the past")
+    if t.pref_slot not in VISIT_SLOTS:
+        raise HTTPException(400, "Choose a visit time")
+    with conn() as c:
+        tid = c.execute("INSERT INTO tickets(farmer_id,crop,variety,qty,notes,location,phone,alt_phone,pref_date,pref_slot,status,created) "
+                        "VALUES(?,?,?,?,?,?,?,?,?,?,'DRAFT',?)",
+                        (t.farmer_id, t.crop.strip(), t.variety.strip() or "Not specified", t.qty, t.notes.strip(),
+                         t.location.strip(), ph, alt, t.pref_date, t.pref_slot,
+                         datetime.datetime.now().isoformat())).lastrowid
+    return {"id": tid, "status": "DRAFT"}
+
+@app.get("/tickets")
+def tickets(view: str = "admin", farmer_id: int = 0):
+    q, args = "SELECT t.*, u.name farmer, u.loc FROM tickets t LEFT JOIN users u ON u.id=t.farmer_id WHERE t.status!='DRAFT'", ()
+    if view == "farmer":
+        q, args = q + " AND t.farmer_id=?", (farmer_id,)
+    with conn() as c:
+        rows = [dict(r) for r in c.execute(q + " ORDER BY t.id DESC", args)]
+        for r in rows:
+            r["media"] = [dict(m) for m in c.execute("SELECT id, kind FROM ticket_media WHERE ticket_id=? ORDER BY id", (r["id"],))]
+    return rows
+
+def _tk_set(tid, new, **f):
+    with conn() as c:
+        t = c.execute("SELECT status FROM tickets WHERE id=?", (tid,)).fetchone()
+        if not t:
+            raise HTTPException(404, "ticket not found")
+        if t["status"] not in ("OPEN", "SCHEDULED"):
+            raise HTTPException(400, f"ticket is already {t['status']}")
+        sets = "".join(f", {k}=?" for k in f)
+        c.execute(f"UPDATE tickets SET status=?{sets} WHERE id=?", (new, *f.values(), tid))
+    return {"id": tid, "status": new}
+
+@app.post("/tickets/{tid}/schedule")
+def schedule(tid: int, visit_date: str):
+    try:
+        datetime.date.fromisoformat(visit_date)
+    except ValueError:
+        raise HTTPException(400, "visit_date must be YYYY-MM-DD")
+    return _tk_set(tid, "SCHEDULED", visit_date=visit_date)
+
+@app.post("/tickets/{tid}/reject")
+def reject(tid: int, reason: str = ""):
+    return _tk_set(tid, "REJECTED", reason=reason.strip())
+
+@app.post("/tickets/{tid}/cancel")
+def cancel_ticket(tid: int):
+    return _tk_set(tid, "CANCELLED")
+
+@app.post("/tickets/{tid}/approve")
+def approve(tid: int, a: Approve):
+    with conn() as c:
+        t = c.execute("SELECT t.*, u.loc FROM tickets t LEFT JOIN users u ON u.id=t.farmer_id WHERE t.id=?", (tid,)).fetchone()
+    if not t:
+        raise HTTPException(404, "ticket not found")
+    if t["status"] not in ("OPEN", "SCHEDULED"):
+        raise HTTPException(400, f"ticket is already {t['status']}")
+    if a.grade not in GRADE_FACTOR:
+        raise HTTPException(400, "grade must be A, B or C")
+    if not a.agreed:
+        raise HTTPException(400, "The farmer must agree to the price before the listing goes live")
+    ref = _latest_mandi(t["crop"])
+    r = add_listing(Listing(farmer_id=t["farmer_id"], crop=t["crop"], variety=(a.variety or t["variety"]),
+                            qty=a.qty, price=a.price, loc=t["loc"] or ""))
+    with conn() as c:
+        c.execute("UPDATE listings SET grade=?, mandi_ref=COALESCE(?, mandi_ref) WHERE id=?",
+                  (a.grade, ref[0] if ref else None, r["id"]))
+        c.execute("UPDATE tickets SET status='APPROVED', grade=?, final_qty=?, price=?, mandi_ref=?, listing_id=? WHERE id=?",
+                  (a.grade, a.qty, a.price, ref[0] if ref else None, r["id"], tid))
+    return {"ticket": tid, "listing": r["id"]}
+
+
+import re, uuid, json
+
+UPLOAD_DIR = os.path.join(BASE, "uploads")
+PHOTO_EXT, VIDEO_EXT = {".jpg", ".jpeg", ".png", ".webp"}, {".mp4", ".mov", ".webm", ".m4v"}
+MAX_PHOTOS, MAX_PHOTO_B, MAX_VIDEO_B = 7, 8 * 1024 * 1024, 150 * 1024 * 1024  # placeholders
+VISIT_SLOTS = ["Morning (8-11 am)", "Midday (11 am-2 pm)", "Afternoon (2-5 pm)", "Evening (5-7 pm)"]
+
+def _phone(p):
+    p = re.sub(r"[\s\-]", "", p or "")
+    p = re.sub(r"^(\+91|91|0)(?=\d{10}$)", "", p)
+    return p if re.fullmatch(r"[6-9]\d{9}", p) else None
+
+@app.get("/varieties")
+def varieties():
+    try:
+        with open(os.path.join(BASE, "data", "varieties.json"), encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {}
+
+@app.post("/tickets/{tid}/media")
+async def upload_media(tid: int, request: Request, kind: str, filename: str):
+    ext = os.path.splitext(filename)[1].lower()
+    if kind not in ("photo", "video") or ext not in (PHOTO_EXT if kind == "photo" else VIDEO_EXT):
+        raise HTTPException(400, "Unsupported file type. Photos: jpg, png, webp. Video: mp4, mov, webm.")
+    with conn() as c:
+        t = c.execute("SELECT status FROM tickets WHERE id=?", (tid,)).fetchone()
+        if not t or t["status"] != "DRAFT":
+            raise HTTPException(400, "This ticket is not accepting uploads")
+        n = c.execute("SELECT COUNT(*) FROM ticket_media WHERE ticket_id=? AND kind=?", (tid, kind)).fetchone()[0]
+    if kind == "photo" and n >= MAX_PHOTOS:
+        raise HTTPException(400, f"Maximum {MAX_PHOTOS} photos")
+    if kind == "video" and n >= 1:
+        raise HTTPException(400, "Only 1 video is allowed")
+    limit = MAX_PHOTO_B if kind == "photo" else MAX_VIDEO_B
+    folder = os.path.join(UPLOAD_DIR, str(tid))
+    os.makedirs(folder, exist_ok=True)
+    path = os.path.join(folder, uuid.uuid4().hex + ext)
+    size, too_big = 0, False
+    with open(path, "wb") as f:
+        async for chunk in request.stream():
+            size += len(chunk)
+            if size > limit:
+                too_big = True
+                break
+            f.write(chunk)
+    if too_big or size == 0:
+        os.remove(path)
+        raise HTTPException(413 if too_big else 400, f"File is too large (max {limit // (1024 * 1024)} MB)" if too_big else "Empty file")
+    with conn() as c:
+        c.execute("INSERT INTO ticket_media(ticket_id,kind,path,filename,size) VALUES(?,?,?,?,?)", (tid, kind, path, filename, size))
+    return {"ok": True}
+
+@app.post("/tickets/{tid}/submit")
+def submit_ticket(tid: int):
+    with conn() as c:
+        t = c.execute("SELECT status FROM tickets WHERE id=?", (tid,)).fetchone()
+        if not t or t["status"] != "DRAFT":
+            raise HTTPException(400, "This ticket cannot be submitted")
+        if c.execute("SELECT COUNT(*) FROM ticket_media WHERE ticket_id=? AND kind='video'", (tid,)).fetchone()[0] != 1:
+            raise HTTPException(400, "1 video is required")
+        c.execute("UPDATE tickets SET status='OPEN' WHERE id=?", (tid,))
+    return {"id": tid, "status": "OPEN"}
+
+@app.delete("/tickets/{tid}")
+def discard_draft(tid: int):
+    with conn() as c:
+        t = c.execute("SELECT status FROM tickets WHERE id=?", (tid,)).fetchone()
+        if not t or t["status"] != "DRAFT":
+            raise HTTPException(400, "Only unfinished tickets can be discarded")
+        paths = [r["path"] for r in c.execute("SELECT path FROM ticket_media WHERE ticket_id=?", (tid,))]
+        c.execute("DELETE FROM ticket_media WHERE ticket_id=?", (tid,))
+        c.execute("DELETE FROM tickets WHERE id=?", (tid,))
+    for p in paths:
+        try:
+            os.remove(p)
+        except OSError:
+            pass
+    return {"discarded": tid}
+
+@app.get("/media/{mid}")
+def media(mid: int):
+    with conn() as c:
+        m = c.execute("SELECT * FROM ticket_media WHERE id=?", (mid,)).fetchone()
+    if not m or not os.path.exists(m["path"]):
+        raise HTTPException(404, "not found")
+    return FileResponse(m["path"])

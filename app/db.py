@@ -22,3 +22,30 @@ def init():
             c.execute("ALTER TABLE listings ADD COLUMN status TEXT DEFAULT 'ACTIVE'")
         except sqlite3.OperationalError:
             pass
+        for ddl in ("ALTER TABLE listings ADD COLUMN variety TEXT DEFAULT ''",
+                    "ALTER TABLE orders ADD COLUMN buyer_amount REAL"):
+            try:
+                c.execute(ddl)
+            except sqlite3.OperationalError:
+                pass
+        c.execute("CREATE TABLE IF NOT EXISTS subscriptions(id INTEGER PRIMARY KEY, buyer_id INT, plan TEXT, price REAL, starts TEXT, ends TEXT)")
+        for ddl in ("ALTER TABLE users ADD COLUMN buyer_type TEXT DEFAULT ''",
+                    "ALTER TABLE listings ADD COLUMN grade TEXT DEFAULT ''"):
+            try:
+                c.execute(ddl)
+            except sqlite3.OperationalError:
+                pass
+        c.execute("CREATE TABLE IF NOT EXISTS tickets(id INTEGER PRIMARY KEY, farmer_id INT, crop TEXT, variety TEXT, qty REAL, notes TEXT, status TEXT DEFAULT 'OPEN', visit_date TEXT, grade TEXT, final_qty REAL, price REAL, mandi_ref REAL, reason TEXT, listing_id INT, created TEXT)")
+        for nm, bt in (("Green Leaf Restaurant", "Restaurant"), ("Taj Residency Hotels", "Hotel"),
+                       ("FreshMart Supermarket", "Supermarket"), ("AgroExports Pvt Ltd", "Exporter")):
+            c.execute("UPDATE users SET buyer_type=? WHERE name=? AND role='buyer' AND (buyer_type IS NULL OR buyer_type='')", (bt, nm))
+        for ddl in ("ALTER TABLE tickets ADD COLUMN location TEXT DEFAULT ''",
+                    "ALTER TABLE tickets ADD COLUMN phone TEXT DEFAULT ''",
+                    "ALTER TABLE tickets ADD COLUMN alt_phone TEXT DEFAULT ''",
+                    "ALTER TABLE tickets ADD COLUMN pref_date TEXT DEFAULT ''",
+                    "ALTER TABLE tickets ADD COLUMN pref_slot TEXT DEFAULT ''"):
+            try:
+                c.execute(ddl)
+            except sqlite3.OperationalError:
+                pass
+        c.execute("CREATE TABLE IF NOT EXISTS ticket_media(id INTEGER PRIMARY KEY, ticket_id INT, kind TEXT, path TEXT, filename TEXT, size INT)")

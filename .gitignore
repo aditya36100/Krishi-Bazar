@@ -4,3 +4,5 @@ __pycache__/
 krishi.db
 data/prices.csv
 data/SYNTHETIC
+
+uploads/

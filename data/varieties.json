@@ -1,0 +1,168 @@
+{
+ "Potato": [
+  "Kufri Jyoti",
+  "Kufri Pukhraj",
+  "Kufri Bahar",
+  "Kufri Chipsona-1",
+  "Kufri Surya",
+  "Kufri Badshah",
+  "Kufri Sindhuri",
+  "Kufri Chandramukhi",
+  "Atlantic",
+  "Local / Desi"
+ ],
+ "Sweet Potato": [
+  "Sree Bhadra",
+  "Sree Arun",
+  "Sree Kanaka",
+  "Bhu Sona",
+  "Bhu Krishna",
+  "Local red",
+  "Local white"
+ ],
+ "Tomato": [
+  "Arka Rakshak",
+  "Arka Samrat",
+  "Arka Vikas",
+  "Pusa Ruby",
+  "Cherry",
+  "Roma (plum)",
+  "Hybrid",
+  "Local / Desi"
+ ],
+ "Onion": [
+  "Bellary Red",
+  "Agrifound Dark Red",
+  "Arka Kalyan",
+  "Arka Niketan",
+  "Bhima Super",
+  "Bhima Shakti",
+  "N-53",
+  "White onion"
+ ],
+ "Avocado": [
+  "Hass",
+  "Fuerte",
+  "Pinkerton",
+  "Reed",
+  "Bacon",
+  "Zutano",
+  "Local (butter fruit)"
+ ],
+ "Dragon Fruit": [
+  "White flesh (Vietnam White)",
+  "Red flesh (Siam Red)",
+  "Yellow (Selenicereus megalanthus)",
+  "Red flesh (local)"
+ ],
+ "Banana": [
+  "Robusta",
+  "Grand Naine (G9)",
+  "Yelakki",
+  "Nendran",
+  "Poovan",
+  "Rasthali",
+  "Red banana"
+ ],
+ "Mango": [
+  "Alphonso",
+  "Totapuri",
+  "Badami",
+  "Raspuri",
+  "Mallika",
+  "Kesar",
+  "Dasheri",
+  "Neelam",
+  "Banganapalli",
+  "Sindhura"
+ ],
+ "Papaya": [
+  "Red Lady (Taiwan 786)",
+  "Coorg Honey Dew",
+  "Pusa Delicious",
+  "Pusa Dwarf",
+  "Surya"
+ ],
+ "Pomegranate": [
+  "Bhagwa",
+  "Ganesh",
+  "Arakta",
+  "Mridula",
+  "Ruby"
+ ],
+ "Grapes": [
+  "Thompson Seedless",
+  "Sonaka",
+  "Sharad Seedless",
+  "Flame Seedless",
+  "Tas-A-Ganesh",
+  "Bangalore Blue",
+  "Red Globe"
+ ],
+ "Strawberry": [
+  "Sweet Charlie",
+  "Camarosa",
+  "Winter Dawn",
+  "Nabila",
+  "Festival"
+ ],
+ "Guava": [
+  "Allahabad Safeda",
+  "Lalit",
+  "Arka Amulya",
+  "Thai Pink (Taiwan Pink)"
+ ],
+ "Capsicum": [
+  "Green (California Wonder)",
+  "Red",
+  "Yellow",
+  "Indra",
+  "Bharat"
+ ],
+ "Broccoli": [
+  "Green Magic",
+  "Palam Samridhi",
+  "Pusa KTS-1",
+  "Fiesta",
+  "Tiburon",
+  "Purple"
+ ],
+ "Zucchini": [
+  "Green",
+  "Yellow (golden)",
+  "Black Beauty",
+  "Round"
+ ],
+ "Cabbage": [
+  "Golden Acre",
+  "Pusa Mukta",
+  "Pusa Drumhead",
+  "Red cabbage",
+  "Savoy"
+ ],
+ "Cauliflower": [
+  "Pusa Snowball",
+  "Pusa Shubhra",
+  "Snowball-16",
+  "Pusa Meghna"
+ ],
+ "Carrot": [
+  "Nantes",
+  "Pusa Kesar",
+  "Pusa Rudhira",
+  "Imperator",
+  "Ooty"
+ ],
+ "Beetroot": [
+  "Crimson Globe",
+  "Detroit Dark Red",
+  "Ruby Queen"
+ ],
+ "Lettuce": [
+  "Iceberg",
+  "Romaine",
+  "Lollo Rosso",
+  "Butterhead",
+  "Red Oak Leaf"
+ ]
+}

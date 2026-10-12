@@ -1,8 +1,9 @@
 """Escrow state machine + tamper-evident (hash-chained) audit ledger. Demo: no real money moves."""
-import hashlib, json, datetime
+import hashlib, json, datetime, os
 from .db import conn
 
-FEE = 0.02
+FEE = float(os.getenv("KS_FARMER_COMMISSION", "0.05"))  # taken from the farmer on delivered orders
+BUYER_MARKUP = float(os.getenv("KS_BUYER_MARKUP", "0.05"))  # added to the price buyers see
 GENESIS = "0" * 64
 ALLOWED = {
     "PLACED": {"FUNDED", "CANCELLED"},
@@ -37,7 +38,9 @@ def move(oid, new, detail=None):
         c.execute("UPDATE orders SET state=? WHERE id=?", (new, oid))
         d = dict(detail or {}, amount=o["amount"])
         if new == "RELEASED":
-            d.update(fee=round(o["amount"] * FEE, 2), farmer_gets=round(o["amount"] * (1 - FEE), 2))
+            bp = o["buyer_amount"] or round(o["amount"] * (1 + BUYER_MARKUP), 2)
+            d.update(commission=round(o["amount"] * FEE, 2), farmer_gets=round(o["amount"] * (1 - FEE), 2),
+                     buyer_paid=bp, platform_total=round(bp - o["amount"] * (1 - FEE), 2))
         _log(c, oid, new, d)
 
 def verify_chain():
