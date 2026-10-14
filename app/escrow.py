@@ -73,3 +73,22 @@ def undo(oid):
             raise ValueError(f"undo window ({UNDO_MINUTES} min) has passed - raise a dispute instead")
         c.execute("UPDATE orders SET state=? WHERE id=?", (prev, oid))
         _log(c, oid, "UNDO", {"from": o["state"], "to": prev})
+
+
+CANCEL_MINUTES = 15
+
+def buyer_cancel(oid):
+    """Buyer undoes an order. Free only while PLACED/FUNDED (farmer has not started) and within CANCEL_MINUTES of ordering."""
+    with conn() as c:
+        o = c.execute("SELECT * FROM orders WHERE id=?", (oid,)).fetchone()
+        if not o:
+            raise ValueError("no such order")
+        if o["state"] not in ("PLACED", "FUNDED"):
+            raise ValueError(f"cannot cancel from {o['state']}: raise a dispute instead")
+        first = c.execute("SELECT ts FROM ledger WHERE order_id=? ORDER BY id LIMIT 1", (oid,)).fetchone()
+        age = (datetime.datetime.now(datetime.timezone.utc) - datetime.datetime.fromisoformat(first["ts"])).total_seconds() / 60
+        if age > CANCEL_MINUTES:
+            raise ValueError(f"the free-cancel window ({CANCEL_MINUTES} min) has passed: raise a dispute instead")
+        new = "CANCELLED" if o["state"] == "PLACED" else "REFUNDED"
+        c.execute("UPDATE orders SET state=? WHERE id=?", (new, oid))
+        _log(c, oid, new, {"reason": "buyer cancelled within the free window", "amount": o["amount"]})

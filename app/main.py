@@ -57,14 +57,19 @@ def add_listing(l: Listing):  # internal: listings are now created only when the
         return {"id": cur.lastrowid, "mandi_ref": ref}
 
 @app.get("/listings")
-def listings(crop: str = "", loc: str = "", view: str = "farmer", buyer_id: int = 0):
+def listings(crop: str = "", loc: str = "", view: str = "farmer", buyer_id: int = 0, farmer_id: int = 0):
     if view == "buyer" and not _sub(buyer_id)["active"]:
         raise HTTPException(402, "Active subscription required to view listings")
     with conn() as c:
         rows = c.execute("SELECT l.*, u.name farmer_name FROM listings l LEFT JOIN users u ON u.id=l.farmer_id "
                          "WHERE l.qty>0 AND l.status='ACTIVE' AND (?='' OR l.crop=?) AND (?='' OR l.loc=?)", (crop, crop, loc, loc)).fetchall()
+        approved = None
+        if view == "farmer" and farmer_id:  # a farmer sees only listings the admin approved from their tickets
+            approved = {r[0] for r in c.execute("SELECT listing_id FROM tickets WHERE status='APPROVED' AND listing_id IS NOT NULL AND farmer_id=?", (farmer_id,))}
     out = []
     for r in rows:
+        if approved is not None and r["id"] not in approved:
+            continue
         d = dict(r); d["farmer_reliability"] = reliability.score(r["farmer_id"])
         if view == "buyer":
             d["price"] = round(d["price"] * (1 + escrow.BUYER_MARKUP), 2)  # buyers only ever see the marked-up price
@@ -99,6 +104,15 @@ def act(oid: int, action: str):
         except ValueError as e:
             raise HTTPException(400, str(e))
         return {"id": oid, "state": "undone"}
+    if action == "buyer_cancel":
+        try:
+            escrow.buyer_cancel(oid)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        with conn() as c:
+            o = c.execute("SELECT qty, listing_id FROM orders WHERE id=?", (oid,)).fetchone()
+            c.execute("UPDATE listings SET qty=qty+? WHERE id=?", (o["qty"], o["listing_id"]))
+        return {"id": oid, "state": "cancelled"}
     if action not in ACTIONS:
         raise HTTPException(404, "unknown action")
     new = ACTIONS[action]
@@ -204,14 +218,6 @@ def orders(view: str = "admin"):
     return rows
 
 
-@app.delete("/listings/{lid}")
-def withdraw(lid: int):
-    with conn() as c:
-        n = c.execute("SELECT COUNT(*) FROM orders WHERE listing_id=? AND state NOT IN ('CANCELLED','REFUNDED','RELEASED')", (lid,)).fetchone()[0]
-        if n:
-            raise HTTPException(400, f"{n} active order(s) on this listing - cancel or refund them first")
-        c.execute("UPDATE listings SET status='WITHDRAWN' WHERE id=?", (lid,))
-    return {"id": lid, "status": "WITHDRAWN"}
 
 
 PLANS = {"monthly": ("Monthly", 999, 30), "yearly": ("Yearly", 9999, 365)}  # placeholder prices - decide with your mentor
@@ -451,3 +457,25 @@ def media(mid: int):
     if not m or not os.path.exists(m["path"]):
         raise HTTPException(404, "not found")
     return FileResponse(m["path"])
+
+
+@app.post("/listings/{lid}/unpublish")
+def unpublish(lid: int, reason: str = ""):  # admin: take a live listing down; reopens its ticket if nothing was sold
+    with conn() as c:
+        l = c.execute("SELECT id FROM listings WHERE id=? AND status='ACTIVE'", (lid,)).fetchone()
+        if not l:
+            raise HTTPException(404, "No live listing with that id")
+        n = c.execute("SELECT COUNT(*) FROM orders WHERE listing_id=? AND state NOT IN ('CANCELLED','REFUNDED','RELEASED')", (lid,)).fetchone()[0]
+        if n:
+            raise HTTPException(400, f"{n} active order(s) on this listing - cancel or refund them first")
+        sold = c.execute("SELECT COUNT(*) FROM orders WHERE listing_id=? AND state='RELEASED'", (lid,)).fetchone()[0]
+        c.execute("UPDATE listings SET status='WITHDRAWN' WHERE id=?", (lid,))
+        t = c.execute("SELECT id FROM tickets WHERE listing_id=? AND status='APPROVED'", (lid,)).fetchone()
+        status = "WITHDRAWN"
+        if t and sold:
+            c.execute("UPDATE tickets SET status='UNPUBLISHED', reason=? WHERE id=?", (reason.strip() or "Removed by admin after sales", t["id"]))
+            status = "UNPUBLISHED"
+        elif t:
+            c.execute("UPDATE tickets SET status='OPEN', grade=NULL, final_qty=NULL, price=NULL, mandi_ref=NULL, listing_id=NULL, reason=NULL WHERE id=?", (t["id"],))
+            status = "OPEN"
+    return {"listing": lid, "status": status}
