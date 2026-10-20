@@ -18,9 +18,10 @@ label{display:block;font-size:12px;color:var(--mu);margin:8px 0 3px}input,select
 .steps{display:flex;gap:4px;margin:8px 0}.steps i{flex:1;height:6px;border-radius:3px;background:var(--bd)}.steps i.d{background:var(--pr)}.row{display:flex;gap:10px;flex-wrap:wrap}.row>*{flex:1;min-width:130px}
 #toast{position:fixed;left:50%;transform:translateX(-50%);bottom:16px;background:var(--tx);color:var(--bg);padding:10px 16px;border-radius:20px;display:none;z-index:9;max-width:90%}
 .sb{display:none;position:absolute;left:0;right:0;top:100%;z-index:20;background:var(--card);border:1px solid var(--bd);border-radius:8px;max-height:240px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,.15)}.sb div{padding:9px 12px;cursor:pointer;font-size:14px}.sb div:hover{background:var(--pr2)}
+select[onchange*="id=+this.value"]{pointer-events:none;appearance:none;-webkit-appearance:none;border-style:dashed}
 svg text{fill:var(--mu);font-size:10px}code{background:var(--pr2);padding:2px 6px;border-radius:4px}.lg{font:12px monospace;color:var(--mu);margin-top:6px}
 </style></head><body>
-<header><h1>🌱 Krishi Bazar</h1><div style="display:flex;gap:8px"><button class="b s" style="margin:0" onclick="go('register')">Register</button><select id="role" style="width:auto" onchange="setRole(this.value)"><option value="farmer">View as: Farmer</option><option value="buyer">View as: Buyer</option><option value="admin">View as: Admin</option></select><select id="lang" style="width:auto" onchange="L=this.value;go(tab)"><option value="en">English</option><option value="kn">ಕನ್ನಡ</option></select></div></header>
+<header><h1>🌱 Krishi Bazar</h1><div style="display:flex;gap:8px"><span id="who" style="font-size:13px"></span><button class="b s" id="lo" style="margin:0;display:none" onclick="logout()">Logout</button><select id="lang" style="width:auto" onchange="L=this.value;go(tab)"><option value="en">English</option><option value="kn">ಕನ್ನಡ</option></select></div></header>
 <div id="badge"></div><nav id="nav"></nav><main id="app"></main><div id="toast"></div>
 <script>
 const $=s=>document.querySelector(s);let R="farmer",L="en",tab="farmer",U=[],M={},fid=0,bid=0,pc="",ph=2,fc="",fl="";
@@ -30,7 +31,7 @@ const t=k=>TT[L][k],fm=n=>"₹"+Math.round(n).toLocaleString("en-IN"),fk=n=>"₹
 const dd=n=>{let x=new Date();x.setDate(x.getDate()+n);return x.toISOString().slice(0,10)};
 const toast=m=>{const e=$("#toast");e.textContent=m;e.style.display="block";setTimeout(()=>e.style.display="none",2800)};
 async function api(p,m="GET",b){const r=await fetch(p,{method:m,headers:{"Content-Type":"application/json"},body:b?JSON.stringify(b):undefined});const j=await r.json().catch(()=>({}));
- if(!r.ok)throw new Error(typeof j.detail=="string"?j.detail:JSON.stringify(j.detail||r.statusText));return j}
+ if(r.status==401&&!p.startsWith("/auth/")){ME=null;showLogin();throw new Error("Please sign in again")}if(!r.ok)throw new Error(typeof j.detail=="string"?j.detail:JSON.stringify(j.detail||r.statusText));return j}
 const ST=["PLACED","FUNDED","HARVESTED","SHIPPED","DELIVERED","RELEASED"];
 const NX={PLACED:["fund","cancel"],FUNDED:["harvest","refund","dispute"],HARVESTED:["ship","dispute"],SHIPPED:["deliver","dispute"],DELIVERED:["release","dispute"],DISPUTED:["release","refund"]};
 const LB={fund:"Pay deposit (demo)",cancel:"Cancel",harvest:"Mark harvested",ship:"Mark shipped",deliver:"Confirm delivery",release:"Release payment",dispute:"Raise dispute",refund:"Refund buyer",undo:"↩ Undo last step",buyer_cancel:"Cancel order (free within 15 min)"};
@@ -150,7 +151,26 @@ const TABS={farmer:["farmer"],buyer:["buyer","orders"],admin:["admin","tickets",
 function setRole(r){R=r;go(TABS[r][0])}
 async function go(x){tab=x;$("#nav").innerHTML=TABS[R].map(k=>`<button class="${k==x?"on":""}" onclick="go('${k}')">${t(k)}</button>`).join("");$("#app").innerHTML="Loading…";
  try{$("#app").innerHTML=await V[x]();after[x]&&after[x]()}catch(e){$("#app").innerHTML=`<div class="card">Error: ${e.message}</div>`}}
-(async()=>{try{M=await api("/meta");U=await api("/users");fid=(U.find(u=>u.role=="farmer")||{}).id;bid=(U.find(u=>u.role=="buyer")||{}).id;pc=M.crops[0];
- $("#badge").className=M.synthetic?"w":"";$("#badge").textContent=M.synthetic?"⚠ SYNTHETIC price data – demo only, not real results":`✔ Real mandi price data · ${M.rows.toLocaleString()} rows · ${M.from} → ${M.to} · users, listings & orders are demo seed data`;go("farmer")}
- catch(e){$("#app").innerHTML=`<div class="card">Cannot reach the API: ${e.message}. Is <code>uvicorn app.main:app</code> running, and does data/prices.csv exist?</div>`}})();
+let ME=null,PT="farmer",BM="login";
+const fv=id=>$("#"+id).value.trim(),lmsg=m=>{$("#lm").textContent=m};
+const LF={
+ farmer:()=>`<label>Mobile number</label><input id="lp" type="tel" inputmode="numeric" maxlength="14" placeholder="10-digit mobile"><button class="b s" onclick="sendOtp()">Send OTP</button><label>OTP</label><input id="lo2" inputmode="numeric" maxlength="6" placeholder="6-digit OTP"><p class="mu">First time? Also fill your name and village to register.</p><div class="row"><div><label>Name (new farmers)</label><input id="ln"></div><div><label>Village / district (new farmers)</label><input id="ll"></div></div><button class="b" onclick="verifyOtp()">Sign in</button>`,
+ buyer:()=>BM=="login"?`<label>Email</label><input id="le" type="email"><label>Password</label><input id="lw" type="password"><button class="b" onclick="emailLogin('buyer')">Sign in</button><button class="b s" onclick="BM='register';showLogin()">New buyer? Register</button>`:`<label>Business / full name</label><input id="ln"><label>Email</label><input id="le" type="email"><label>Password (min 8 characters)</label><input id="lw" type="password"><label>Location</label><input id="ll"><label>What will you use the crop for?</label><select id="lt"><option value="">Choose...</option>${BT.map(b=>`<option>${b}</option>`).join("")}</select><button class="b" onclick="buyerReg()">Register &amp; sign in</button><button class="b s" onclick="BM='login';showLogin()">Back to sign in</button>`,
+ admin:()=>`<label>Admin email</label><input id="le" type="email"><label>Password</label><input id="lw" type="password"><button class="b" onclick="emailLogin('admin')">Sign in</button>`};
+function showLogin(){$("#nav").innerHTML="";$("#who").textContent="";$("#lo").style.display="none";
+ const t=(p,l)=>`<button class="b ${p==PT?"":"s"}" style="margin:0 6px 0 0" onclick="PT='${p}';BM='login';showLogin()">${l}</button>`;
+ $("#app").innerHTML=`<div class="card" style="max-width:460px;margin:24px auto"><h2>Sign in</h2><div style="margin-bottom:10px">${t("farmer","Farmer")}${t("buyer","Buyer")}${t("admin","Admin")}</div>${LF[PT]()}<div id="lm" class="mu" style="margin-top:10px"></div></div>`}
+async function sendOtp(){try{const r=await api("/auth/farmer/otp","POST",{phone:fv("lp")});lmsg(r.dev_otp?`Dev mode: your OTP is ${r.dev_otp}`:"OTP sent to your mobile.")}catch(e){lmsg(e.message)}}
+async function verifyOtp(){try{ME=await api("/auth/farmer/verify","POST",{phone:fv("lp"),otp:fv("lo2"),name:fv("ln"),loc:fv("ll")});start()}catch(e){lmsg(e.message)}}
+async function emailLogin(p){try{ME=await api(`/auth/${p}/login`,"POST",{email:fv("le"),password:$("#lw").value});start()}catch(e){lmsg(e.message)}}
+async function buyerReg(){if(!fv("lt")){alert("Please choose what you will use the crop for.");return}try{ME=await api("/auth/buyer/register","POST",{name:fv("ln"),email:fv("le"),password:$("#lw").value,loc:fv("ll"),buyer_type:fv("lt")});start()}catch(e){lmsg(e.message)}}
+async function logout(){try{await api("/auth/logout","POST")}catch(e){}ME=null;showLogin()}
+async function start(){
+ try{M=await api("/meta")}catch(e){$("#app").innerHTML=`<div class="card">Cannot reach the API: ${e.message}. Is <code>uvicorn app.main:app</code> running?</div>`;return}
+ $("#badge").className=M.synthetic?"w":"";$("#badge").textContent=M.synthetic?"⚠ SYNTHETIC price data – demo only, not real results":`✔ Real mandi price data · ${M.rows.toLocaleString()} rows · ${M.from} → ${M.to}`;
+ if(!ME){try{ME=await api("/auth/me")}catch(e){ME=null}}
+ if(!ME){showLogin();return}
+ R=ME.role;U=R=="admin"?await api("/users"):[ME];if(R=="farmer")fid=ME.id;if(R=="buyer")bid=ME.id;pc=(M.crops||[])[0];
+ $("#who").textContent=`${ME.name} · ${R}`;$("#lo").style.display="";go(TABS[R][0])}
+start();
 </script></body></html>
