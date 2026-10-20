@@ -35,6 +35,13 @@ def init():
                 c.execute(ddl)
             except sqlite3.OperationalError:
                 pass
+        for ddl in ("ALTER TABLE listings ADD COLUMN buyer_markup REAL",
+                    "ALTER TABLE listings ADD COLUMN early_hours REAL DEFAULT 0",
+                    "ALTER TABLE listings ADD COLUMN live_at TEXT"):
+            try:
+                c.execute(ddl)
+            except sqlite3.OperationalError:
+                pass
         c.execute("CREATE TABLE IF NOT EXISTS tickets(id INTEGER PRIMARY KEY, farmer_id INT, crop TEXT, variety TEXT, qty REAL, notes TEXT, status TEXT DEFAULT 'OPEN', visit_date TEXT, grade TEXT, final_qty REAL, price REAL, mandi_ref REAL, reason TEXT, listing_id INT, created TEXT)")
         for nm, bt in (("Green Leaf Restaurant", "Restaurant"), ("Taj Residency Hotels", "Hotel"),
                        ("FreshMart Supermarket", "Supermarket"), ("AgroExports Pvt Ltd", "Exporter")):

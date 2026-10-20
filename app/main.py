@@ -58,8 +58,7 @@ def add_listing(l: Listing):  # internal: listings are now created only when the
 
 @app.get("/listings")
 def listings(crop: str = "", loc: str = "", view: str = "farmer", buyer_id: int = 0, farmer_id: int = 0):
-    if view == "buyer" and not _sub(buyer_id)["active"]:
-        raise HTTPException(402, "Active subscription required to view listings")
+    subbed = _sub(buyer_id)["active"] if view == "buyer" else False
     with conn() as c:
         rows = c.execute("SELECT l.*, u.name farmer_name FROM listings l LEFT JOIN users u ON u.id=l.farmer_id "
                          "WHERE l.qty>0 AND l.status='ACTIVE' AND (?='' OR l.crop=?) AND (?='' OR l.loc=?)", (crop, crop, loc, loc)).fetchall()
@@ -72,7 +71,7 @@ def listings(crop: str = "", loc: str = "", view: str = "farmer", buyer_id: int 
             continue
         d = dict(r); d["farmer_reliability"] = reliability.score(r["farmer_id"])
         if view == "buyer":
-            d["price"] = round(d["price"] * (1 + escrow.BUYER_MARKUP), 2)  # buyers only ever see the marked-up price
+            d["price"] = round(d["price"] * (1 + _markup(r, subbed)), 2); d["early_access_until"] = _opens_at(r).isoformat(timespec="minutes"); d["locked_for_you"] = (not subbed) and _opens_at(r) > datetime.datetime.now(); d["subscriber_rate"] = subbed  # buyers only ever see the marked-up price
         out.append(d)
     return out
 
@@ -84,13 +83,14 @@ def place(o: Order):
             raise HTTPException(404, "listing not found")
         if o.qty <= 0 or o.qty > l["qty"]:
             raise HTTPException(400, "invalid quantity")
-        if not _sub(o.buyer_id)["active"]:
-            raise HTTPException(402, "Active subscription required to place orders")
+        subbed = _sub(o.buyer_id)["active"]
+        if not subbed and _opens_at(l) > datetime.datetime.now():
+            raise HTTPException(403, "Early-access window: opens to all buyers at " + _opens_at(l).strftime("%d %b %H:%M"))
         mn = min(_buyer_min(o.buyer_id), l["qty"])
         if o.qty < mn:
             raise HTTPException(400, f"Minimum order is {mn:g} kg for your buyer type")
         oid = c.execute("INSERT INTO orders(listing_id,buyer_id,qty,amount,buyer_amount,deposit_pct,created) VALUES(?,?,?,?,?,?,?)",
-                        (o.listing_id, o.buyer_id, o.qty, round(o.qty * l["price"], 2), round(o.qty * l["price"] * (1 + escrow.BUYER_MARKUP), 2), o.deposit_pct,
+                        (o.listing_id, o.buyer_id, o.qty, round(o.qty * l["price"], 2), round(o.qty * l["price"] * (1 + _markup(l, subbed)), 2), o.deposit_pct,
                          datetime.datetime.now().isoformat())).lastrowid
         c.execute("UPDATE listings SET qty=qty-? WHERE id=?", (o.qty, o.listing_id))
     escrow.start(oid)
@@ -220,6 +220,73 @@ def orders(view: str = "admin"):
 
 
 
+RATE_CAP = 0.10  # admin-editable rates are fractions (0.03 = 3%), capped here
+SUB_DISCOUNT = 0.005  # subscribers pay this much less markup (0.5 point)
+
+def _load_rates():
+    global SUB_DISCOUNT
+    try:
+        with conn() as c:
+            c.execute("CREATE TABLE IF NOT EXISTS settings(k TEXT PRIMARY KEY, v TEXT)")
+            rows = c.execute("SELECT k, v FROM settings").fetchall()
+        for r in rows:
+            k, v = r[0], float(r[1])
+            if k == "farmer_fee":
+                escrow.FEE = v
+            elif k == "default_markup":
+                escrow.BUYER_MARKUP = v
+            elif k == "sub_discount":
+                SUB_DISCOUNT = v
+    except Exception:
+        pass
+
+_load_rates()
+
+def _markup(l, subbed):
+    m = l["buyer_markup"] if l["buyer_markup"] is not None else escrow.BUYER_MARKUP
+    return max(0.0, m - SUB_DISCOUNT) if subbed else m
+
+def _opens_at(l):
+    try:
+        t0 = datetime.datetime.fromisoformat(l["live_at"])
+        h = float(l["early_hours"] or 0)
+    except Exception:
+        return datetime.datetime.min
+    return t0 + datetime.timedelta(hours=h)
+
+def _check_terms(a):
+    if a.buyer_markup != -1.0 and not (0 <= a.buyer_markup <= RATE_CAP):
+        raise HTTPException(400, f"buyer markup must be between 0 and {RATE_CAP:g} (fraction, 0.03 = 3%)")
+    if not (0 <= a.early_hours <= 720):
+        raise HTTPException(400, "early-access hours must be between 0 and 720")
+
+class RatesIn(BaseModel):
+    farmer_fee: float = -1.0
+    default_markup: float = -1.0
+    sub_discount: float = -1.0
+
+@app.get("/admin/settings")
+def admin_rates_get():
+    return {"farmer_fee": escrow.FEE, "default_markup": escrow.BUYER_MARKUP, "sub_discount": SUB_DISCOUNT, "cap": RATE_CAP}
+
+@app.post("/admin/settings")
+def admin_rates_set(s: RatesIn):
+    new = {}
+    for k, v in (("farmer_fee", s.farmer_fee), ("default_markup", s.default_markup), ("sub_discount", s.sub_discount)):
+        if v == -1.0:
+            continue
+        if not (0 <= v <= RATE_CAP):
+            raise HTTPException(400, f"{k} must be between 0 and {RATE_CAP:g}")
+        new[k] = v
+    if not new:
+        raise HTTPException(400, "nothing to change")
+    with conn() as c:
+        c.execute("CREATE TABLE IF NOT EXISTS settings(k TEXT PRIMARY KEY, v TEXT)")
+        for k, v in new.items():
+            c.execute("INSERT OR REPLACE INTO settings(k,v) VALUES(?,?)", (k, str(v)))
+    _load_rates()
+    return admin_rates_get()
+
 PLANS = {"monthly": ("Monthly", 999, 30), "yearly": ("Yearly", 9999, 365)}  # placeholder prices - decide with your mentor
 
 def _sub(buyer_id):
@@ -277,6 +344,8 @@ class Ticket(BaseModel):
     variety: str = ""; alt_phone: str = ""; notes: str = ""
 
 class Approve(BaseModel):
+    buyer_markup: float = -1.0
+    early_hours: float = 0.0
     grade: str; qty: float; price: float; agreed: bool = False; variety: str = ""
 
 @app.post("/tickets")
@@ -359,10 +428,12 @@ def approve(tid: int, a: Approve):
         raise HTTPException(400, "grade must be A, B or C")
     if not a.agreed:
         raise HTTPException(400, "The farmer must agree to the price before the listing goes live")
+    _check_terms(a)
     ref = _latest_mandi(t["crop"])
     r = add_listing(Listing(farmer_id=t["farmer_id"], crop=t["crop"], variety=(a.variety or t["variety"]),
                             qty=a.qty, price=a.price, loc=t["loc"] or ""))
     with conn() as c:
+        c.execute("UPDATE listings SET buyer_markup=?, early_hours=?, live_at=? WHERE id=?", (None if a.buyer_markup == -1.0 else a.buyer_markup, a.early_hours, datetime.datetime.now().isoformat(), r["id"]))
         c.execute("UPDATE listings SET grade=?, mandi_ref=COALESCE(?, mandi_ref) WHERE id=?",
                   (a.grade, ref[0] if ref else None, r["id"]))
         c.execute("UPDATE tickets SET status='APPROVED', grade=?, final_qty=?, price=?, mandi_ref=?, listing_id=? WHERE id=?",
