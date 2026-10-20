@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8"><title>Krishi Suraksha</title>
+<html lang="en"><head><meta charset="utf-8"><title>Krishi Bazar</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <style>
 :root{--bg:#f6f8f3;--card:#fff;--tx:#1d2a1f;--mu:#667568;--pr:#2f7d32;--pr2:#e3f1e2;--bd:#dde4d9;--wr:#b26a00}
@@ -20,7 +20,7 @@ label{display:block;font-size:12px;color:var(--mu);margin:8px 0 3px}input,select
 .sb{display:none;position:absolute;left:0;right:0;top:100%;z-index:20;background:var(--card);border:1px solid var(--bd);border-radius:8px;max-height:240px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,.15)}.sb div{padding:9px 12px;cursor:pointer;font-size:14px}.sb div:hover{background:var(--pr2)}
 svg text{fill:var(--mu);font-size:10px}code{background:var(--pr2);padding:2px 6px;border-radius:4px}.lg{font:12px monospace;color:var(--mu);margin-top:6px}
 </style></head><body>
-<header><h1>🌱 Krishi Suraksha</h1><div style="display:flex;gap:8px"><button class="b s" style="margin:0" onclick="go('register')">Register</button><select id="role" style="width:auto" onchange="setRole(this.value)"><option value="farmer">View as: Farmer</option><option value="buyer">View as: Buyer</option><option value="admin">View as: Admin</option></select><select id="lang" style="width:auto" onchange="L=this.value;go(tab)"><option value="en">English</option><option value="kn">ಕನ್ನಡ</option></select></div></header>
+<header><h1>🌱 Krishi Bazar</h1><div style="display:flex;gap:8px"><button class="b s" style="margin:0" onclick="go('register')">Register</button><select id="role" style="width:auto" onchange="setRole(this.value)"><option value="farmer">View as: Farmer</option><option value="buyer">View as: Buyer</option><option value="admin">View as: Admin</option></select><select id="lang" style="width:auto" onchange="L=this.value;go(tab)"><option value="en">English</option><option value="kn">ಕನ್ನಡ</option></select></div></header>
 <div id="badge"></div><nav id="nav"></nav><main id="app"></main><div id="toast"></div>
 <script>
 const $=s=>document.querySelector(s);let R="farmer",L="en",tab="farmer",U=[],M={},fid=0,bid=0,pc="",ph=2,fc="",fl="";

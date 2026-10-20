@@ -1,4 +1,4 @@
-# Krishi Suraksha v3 - runs fully on your laptop
+# Krishi Bazar - runs fully on your laptop
 1. pip install -r requirements.txt
 2. Put real prices in data/prices.csv:  python data/normalize_agmarknet.py raw.csv --state Karnataka
    (or for a dry run only: python data/make_demo_csv.py  -> SYNTHETIC, shows an orange warning banner)

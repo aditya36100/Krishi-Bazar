@@ -7,7 +7,7 @@ from . import db, escrow, pricing, reliability
 from .db import conn
 
 db.init()
-app = FastAPI(title="Krishi Suraksha API")
+app = FastAPI(title="Krishi Bazar API")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])  # dev only
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
