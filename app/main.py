@@ -3,14 +3,12 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from . import auth, db, escrow, pricing, reliability
+from . import db, escrow, pricing, reliability
 from .db import conn
 
 db.init()
-auth.init()
-app = FastAPI(title="Krishi Bazar API", **auth.DOCS)
-app.include_router(auth.router)
-app.add_middleware(auth.AuthMiddleware)
+app = FastAPI(title="Krishi Bazar API")
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])  # dev only
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CSV = os.getenv("KS_PRICES", os.path.join(BASE, "data", "prices.csv"))
@@ -80,7 +78,6 @@ def listings(crop: str = "", loc: str = "", view: str = "farmer", buyer_id: int 
 
 @app.post("/orders")
 def place(o: Order):
-    o.buyer_id = auth.uid()
     with conn() as c:
         l = c.execute("SELECT * FROM listings WHERE id=?", (o.listing_id,)).fetchone()
         if not l:
@@ -210,11 +207,6 @@ def orders(view: str = "admin"):
             "SELECT o.*, l.crop, l.variety, l.price, l.farmer_id, fu.name farmer, bu.name buyer FROM orders o "
             "JOIN listings l ON l.id=o.listing_id LEFT JOIN users fu ON fu.id=l.farmer_id "
             "LEFT JOIN users bu ON bu.id=o.buyer_id ORDER BY o.id DESC")]
-    u = auth.cur()
-    if u and u["role"] == "farmer":
-        rows = [d for d in rows if d["farmer_id"] == u["id"]]
-    elif u and u["role"] == "buyer":
-        rows = [d for d in rows if d["buyer_id"] == u["id"]]
     for d in rows:
         bp = d.get("buyer_amount") or round(d["amount"] * (1 + escrow.BUYER_MARKUP), 2)
         if view == "buyer":
@@ -289,7 +281,6 @@ class Approve(BaseModel):
 
 @app.post("/tickets")
 def raise_ticket(t: Ticket):
-    t.farmer_id = auth.uid()
     if t.qty < MIN_KG:
         raise HTTPException(400, f"Minimum quantity is {MIN_KG:g} kg")
     if not t.crop.strip():
