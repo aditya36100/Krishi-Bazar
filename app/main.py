@@ -212,6 +212,8 @@ def orders(view: str = "admin"):
         bp = d.get("buyer_amount") or round(d["amount"] * (1 + escrow.BUYER_MARKUP), 2)
         if view == "buyer":
             d["amount"] = bp; d.pop("buyer_amount", None); d.pop("price", None)
+            if d["state"] in ("PLACED", "FUNDED"):
+                d["cancel_charge"] = escrow.cancel_preview(d["id"])
         elif view == "farmer":
             d["payout"] = round(d["amount"] * (1 - escrow.FEE), 2); d.pop("buyer_amount", None)
         else:
@@ -238,6 +240,8 @@ def _load_rates():
                 escrow.BUYER_MARKUP = v
             elif k == "sub_discount":
                 SUB_DISCOUNT = v
+            elif k == "cancel_fee":
+                escrow.CANCEL_FEE = v
     except Exception:
         pass
 
@@ -265,15 +269,16 @@ class RatesIn(BaseModel):
     farmer_fee: float = -1.0
     default_markup: float = -1.0
     sub_discount: float = -1.0
+    cancel_fee: float = -1.0
 
 @app.get("/admin/settings")
 def admin_rates_get():
-    return {"farmer_fee": escrow.FEE, "default_markup": escrow.BUYER_MARKUP, "sub_discount": SUB_DISCOUNT, "cap": RATE_CAP}
+    return {"farmer_fee": escrow.FEE, "default_markup": escrow.BUYER_MARKUP, "sub_discount": SUB_DISCOUNT, "cancel_fee": escrow.CANCEL_FEE, "cap": RATE_CAP}
 
 @app.post("/admin/settings")
 def admin_rates_set(s: RatesIn):
     new = {}
-    for k, v in (("farmer_fee", s.farmer_fee), ("default_markup", s.default_markup), ("sub_discount", s.sub_discount)):
+    for k, v in (("farmer_fee", s.farmer_fee), ("default_markup", s.default_markup), ("sub_discount", s.sub_discount), ("cancel_fee", s.cancel_fee)):
         if v == -1.0:
             continue
         if not (0 <= v <= RATE_CAP):

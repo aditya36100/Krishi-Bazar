@@ -76,6 +76,22 @@ def undo(oid):
 
 
 CANCEL_MINUTES = 15
+CANCEL_FEE = float(os.getenv("KS_CANCEL_FEE", "0.10"))  # share of the order value charged after the free window, capped at the deposit
+
+def _cancel_charge(o, age):
+    if age <= CANCEL_MINUTES or o["state"] != "FUNDED":
+        return 0.0
+    bp = o["buyer_amount"] or round(o["amount"] * (1 + BUYER_MARKUP), 2)
+    return round(min(bp * CANCEL_FEE, bp * (o["deposit_pct"] or 0)), 2)
+
+def cancel_preview(oid):
+    with conn() as c:
+        o = c.execute("SELECT * FROM orders WHERE id=?", (oid,)).fetchone()
+        first = c.execute("SELECT ts FROM ledger WHERE order_id=? ORDER BY id LIMIT 1", (oid,)).fetchone()
+    if not o or not first:
+        return 0.0
+    age = (datetime.datetime.now(datetime.timezone.utc) - datetime.datetime.fromisoformat(first["ts"])).total_seconds() / 60
+    return _cancel_charge(o, age)
 
 def buyer_cancel(oid):
     """Buyer undoes an order. Free only while PLACED/FUNDED (farmer has not started) and within CANCEL_MINUTES of ordering."""
@@ -87,8 +103,8 @@ def buyer_cancel(oid):
             raise ValueError(f"cannot cancel from {o['state']}: raise a dispute instead")
         first = c.execute("SELECT ts FROM ledger WHERE order_id=? ORDER BY id LIMIT 1", (oid,)).fetchone()
         age = (datetime.datetime.now(datetime.timezone.utc) - datetime.datetime.fromisoformat(first["ts"])).total_seconds() / 60
-        if age > CANCEL_MINUTES:
-            raise ValueError(f"the free-cancel window ({CANCEL_MINUTES} min) has passed: raise a dispute instead")
+        charge = _cancel_charge(o, age)
         new = "CANCELLED" if o["state"] == "PLACED" else "REFUNDED"
         c.execute("UPDATE orders SET state=? WHERE id=?", (new, oid))
-        _log(c, oid, new, {"reason": "buyer cancelled within the free window", "amount": o["amount"]})
+        _log(c, oid, new, {"reason": "buyer cancelled" + ("" if age <= CANCEL_MINUTES else " after the free window"), "amount": o["amount"], "cancel_charge": charge})
+        return charge
