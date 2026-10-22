@@ -559,10 +559,11 @@ ${md.filter(x => x.kind == "video").map(x => `<video controls preload="metadata"
         async function rejectTk(id) { const r = prompt("Reason for rejecting (the farmer will see this):"); if (r === null) return; try { await api(`/tickets/${id}/reject?reason=${encodeURIComponent(r)}`, "POST"); toast("Ticket rejected"); go("tickets") } catch (e) { alert(e.message) } }
         function rrSel() { $("#rb").style.display = $("#rr").value == "buyer" ? "block" : "none" }
         async function reg() {
-            const role = $("#rr").value, name = $("#rn").value.trim(), loc = $("#rl").value.trim(), bt = $("#rt").value;
+            const role = $("#rr").value, name = $("#rn").value.trim(), loc = $("#rl").value.trim(), bt = $("#rt").value, ph = $("#rp") ? $("#rp").value.trim() : "";
             if (!name || !loc) { alert("Please enter your name and location."); return }
             if (role == "buyer" && !bt) { alert("Please choose what you will use the crop for."); return }
-            try { const r = await api("/users", "POST", { name, role, loc, buyer_type: role == "buyer" ? bt : "" }); U = await api("/users"); if (role == "buyer") bid = r.id; else fid = r.id; R = role; $("#role").value = role; toast("Registered. Welcome, " + name); go(TABS[role][0]) } catch (e) { alert(e.message) }
+if (!/^(\+?91|0)?[6-9]\d{9}$/.test(ph.replace(/[\s-]/g, ""))) { alert("Please enter a valid 10-digit mobile number."); return }
+            try { const r = await api("/users", "POST", { name, role, loc, phone: ph, buyer_type: role == "buyer" ? bt : "" }); U = await api("/users"); if (role == "buyer") bid = r.id; else fid = r.id; R = role; $("#role").value = role; toast("Registered. Welcome, " + name); go(TABS[role][0]) } catch (e) { alert(e.message) }
         }
         const V = {}, after = {};
         V.tickets = async () => {
@@ -570,7 +571,7 @@ ${md.filter(x => x.kind == "video").map(x => `<video controls preload="metadata"
             const op = tk.filter(t => ["OPEN", "SCHEDULED"].includes(t.status)), dn = tk.filter(t => !["OPEN", "SCHEDULED"].includes(t.status));
             return `<h2>Open tickets (${op.length})</h2>${op.map(adminTk).join("") || '<p class="mu">No open tickets.</p>'}<h2 style="margin-top:14px">Live listings (${lv.length})</h2>${lv.map(liveCard).join("") || '<p class="mu">No live listings.</p>'}<h2 style="margin-top:14px">Closed</h2>${dn.map(tkCard).join("") || "—"}`
         };
-        V.register = async () => `<div class="card"><h2>Register</h2><div class="row"><div><label>Register as</label><select id="rr" onchange="rrSel()"><option value="buyer">Buyer</option><option value="farmer">Farmer</option></select></div><div><label>Name / business name</label><input id="rn"></div><div><label>Location (town or district)</label><input id="rl"></div></div>
+        V.register = async () => `<div class="card"><h2>Register</h2><div class="row"><div><label>Register as</label><select id="rr" onchange="rrSel()"><option value="buyer">Buyer</option><option value="farmer">Farmer</option></select></div><div><label>Name / business name</label><input id="rn"></div><div><label>Location (town or district)</label><input id="rl"></div><div><label>Mobile number</label><input id="rp" type="tel" inputmode="numeric" maxlength="14" placeholder="10-digit mobile"></div></div>
 <div id="rb"><label>What will you use the crop for?</label><select id="rt"><option value="">Choose...</option>${BT.map(b => `<option>${b}</option>`).join("")}</select><p class="mu">Your buyer type sets your minimum order size.</p></div><button class="b" onclick="reg()">Register</button></div>`;
         V.farmer = async () => {
             const F = U.filter(u => u.role == "farmer"); if (!F.length) return noSeed(); await loadVR(); const [ls, os, tk] = await Promise.all([api(`/listings?view=farmer&farmer_id=${fid}`), api("/orders?view=farmer"), api(`/tickets?view=farmer&farmer_id=${fid}`)]);
@@ -749,6 +750,99 @@ const _c=window.confirm,_a=window.alert,T=s=>(L==="kn"&&R==="buyer")?tp(String(s
 window.confirm=m=>_c.call(window,T(m));window.alert=m=>_a.call(window,T(m));
 const tb=document.getElementById("toast");if(tb)new MutationObserver(()=>{if(L!=="kn"||R!=="buyer")return;const o=tb.textContent,n=tp(o);if(n!==o)tb.textContent=n}).observe(tb,{childList:true,characterData:true,subtree:true});
 })();
-</script></body>
+</script><script>/*KB-ADMIN*/
+(function () {
+    const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    const FS = { PLACED: "Placed · awaiting deposit", FUNDED: "Deposit in escrow", HARVESTED: "Harvested", SHIPPED: "Shipped", DELIVERED: "Delivered · awaiting release", RELEASED: "Paid out", DISPUTED: "Disputed · needs you", REFUNDED: "Refunded", CANCELLED: "Cancelled" };
+    const SC = { DISPUTED: "background:#fee2e2;color:#b91c1c", DELIVERED: "background:#fef3c7;color:#92400e", RELEASED: "background:#dcfce7;color:#166534" };
+    const stTag = s => `<span class="tag" style="${SC[s] || ""}">${esc(FS[s] || s)}</span>`;
+    const paid = o => +(o.buyer_amount || o.amount) || 0;
+    const live = o => !["CANCELLED", "REFUNDED"].includes(o.state);
+    const ts = o => { const x = new Date(o.created).getTime(); return isNaN(x) ? 0 : x };
+    const when = s => { const d = new Date(s); return isNaN(d) ? "" : d.toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }) };
+    const ago = s => { const d = new Date(s); if (isNaN(d)) return ""; const m = Math.max(0, Math.round((Date.now() - d) / 6e4)); return (m < 1 ? "just now" : m < 60 ? m + " min ago" : m < 1440 ? Math.floor(m / 60) + " h ago" : Math.floor(m / 1440) + " d ago") + " (" + d.toLocaleDateString("en-IN", { day: "numeric", month: "short" }) + ")" };
+    const midnight = n => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - n); return d.getTime() };
+    const byId = (a, b) => b.id - a.id;
+    let ADM_U = [], DW = 30;
+
+    function groups(os) {
+        const t0 = midnight(0), y0 = midnight(1), w0 = midnight(7);
+        const G = [{ k: "Today", s: "", r: [] }, { k: "Yesterday", s: "", r: [] }, { k: "Last 7 days", s: "before yesterday", r: [] }, { k: "Older", s: "", r: [] }];
+        [...os].sort((a, b) => ts(b) - ts(a) || b.id - a.id).forEach(o => { const x = ts(o); G[x >= t0 ? 0 : x >= y0 ? 1 : x >= w0 ? 2 : 3].r.push(o) });
+        return G
+    }
+    function demand(os, days, lv) {
+        const cut = days ? Date.now() - days * 864e5 : 0, m = {};
+        os.filter(o => live(o) && (!days || ts(o) >= cut)).forEach(o => { const c = m[o.crop] || (m[o.crop] = { crop: o.crop, n: 0, kg: 0, val: 0, stock: 0 }); c.n++; c.kg += +o.qty || 0; c.val += paid(o) });
+        lv.forEach(l => { if (m[l.crop]) m[l.crop].stock += +l.qty || 0 });
+        return Object.values(m).sort((a, b) => b.kg - a.kg || b.n - a.n)
+    }
+    function admCard(o) {
+        let h = ordCard(o);
+        h = h.replace(String(o.buyer) + " → " + String(o.farmer) + "</div>", () => esc(o.buyer) + " → " + esc(o.farmer) + "<br>Placed " + when(o.created) + "</div>");
+        h = h.replace('<span class="tag">' + o.state + "</span>", () => stTag(o.state));
+        h = h.replace("<b>" + fm(o.amount) + "</b>", () => "<b>" + fm(paid(o)) + '</b> <span class="mu">buyer paid</span><div class="mu">Farmer value ' + fm(o.amount) + "</div>");
+        return h
+    }
+
+    window.setDW = n => { DW = n; go("admin") };
+    window.userRows = function () {
+        const q = ($("#us") ? $("#us").value : "").trim().toLowerCase(), qd = q.replace(/\D/g, ""), rf = $("#ur") ? $("#ur").value : "", today = new Date().toLocaleDateString("en-CA");
+        const rows = ADM_U.filter(u => (!rf || u.role == rf) && (!q || [u.name, u.loc, u.buyer_type, u.role, u.phone].join(" ").toLowerCase().includes(q) || (qd.length >= 3 && (u.phones || []).some(p => String(p).replace(/\D/g, "").includes(qd)))));
+        $("#ub").innerHTML = rows.map(u => {
+            const also = (u.phones || []).filter(p => p && p !== u.phone);
+            const plan = u.role == "buyer" ? (u.plus_until && u.plus_until >= today ? "Plus until " + esc(u.plus_until) : "Free") : "";
+            return `<tr><td><b>${esc(u.name)}</b></td><td>${u.role == "farmer" ? "Farmer" : "Buyer"}</td><td>${esc(u.phone || "–")}${also.length ? `<div class="mu">also ${esc(also.join(", "))}</div>` : ""}</td><td>${esc(u.buyer_type || (u.role == "farmer" ? "–" : ""))}${plan ? `<div class="mu">${plan}</div>` : ""}</td><td>${esc(u.loc || "–")}</td></tr>`
+        }).join("") || '<tr><td colspan="5" class="mu">No user matches your search.</td></tr>';
+        $("#uc").textContent = "· showing " + rows.length + " of " + ADM_U.length
+    };
+    after.admin = () => window.userRows();
+
+    V.admin = async () => {
+        const [s, os, tk, lv, us] = await Promise.all([api("/admin/summary"), api("/orders?view=admin"), api("/tickets?view=admin"), api("/listings?view=admin"), api("/users")]);
+        U = us; ADM_U = us.filter(u => u.role != "admin");
+        const wait = tk.filter(x => ["OPEN", "SCHEDULED"].includes(x.status)), fresh = tk.filter(x => x.status == "OPEN").length, disp = os.filter(o => o.state == "DISPUTED").length;
+        const t0 = midnight(0), today = os.filter(o => ts(o) >= t0), stock = lv.reduce((a, l) => a + (+l.qty || 0), 0);
+        const card = (lbl, val, hint, to, warn) => `<div class="card"${to ? ` onclick="go('${to}')" style="cursor:pointer${warn ? ";border:2px solid #dc2626" : ""}"` : ""}><div class="mu">${lbl}</div><div class="big">${val}</div><div class="mu">${hint}</div></div>`;
+        const earn = (+s.platform_fee || 0) + (+s.buyer_margin || 0) + (+s.subscription_revenue || 0);
+        const dm = demand(os, DW || 0, lv), top = dm.length ? dm[0].kg : 1;
+        const dbtn = (n, l) => `<button class="b s" style="${DW === n ? "outline:2px solid var(--pr)" : ""}" onclick="setDW(${n})">${l}</button>`;
+        const recent = [...os].sort((a, b) => ts(b) - ts(a) || b.id - a.id).slice(0, 5);
+        return `<h2>Needs your attention</h2><div class="stats">${card("Tickets waiting", wait.length, fresh + " not yet scheduled", "tickets")}${card("Disputed orders", disp, disp ? "Open Orders to resolve them" : "None, all clear", "orders", disp > 0)}${card("Orders today", today.length, fm(today.filter(live).reduce((a, o) => a + paid(o), 0)) + " from buyers", "orders")}${card("Live listings", lv.length, stock.toLocaleString("en-IN") + " kg in stock", "tickets")}</div>
+<h2 style="margin-top:16px">Money <span class="mu" style="font-weight:400">· counted on paid-out (released) orders</span></h2><div class="stats">${card("Sales completed", fm(s.gmv_released), "Farmer value of released orders")}${card("Farmer commission", fm(s.platform_fee), "Taken from farmers on delivery")}${card("Buyer markup", fm(s.buyer_margin), "Added to buyer prices, kept by platform")}${card("Plus subscriptions", fm(s.subscription_revenue), "Memberships sold")}<div class="card" style="border:2px solid var(--pr)"><div class="mu">Total platform earnings</div><div class="big">${fm(earn)}</div><div class="mu">Commission + markup + subscriptions</div></div>${card("Farmer price vs mandi forecast", s.avg_farmer_premium_pct == null ? "–" : (s.avg_farmer_premium_pct > 0 ? "+" : "") + s.avg_farmer_premium_pct + "%", "Average over paid-out orders")}</div>
+<div class="card tw" style="margin-top:16px"><h2>🔥 High-demand crops</h2><div style="margin-bottom:8px">${dbtn(7, "Last 7 days")} ${dbtn(30, "Last 30 days")} ${dbtn(0, "All time")}</div><table><tr><th>#</th><th>Crop</th><th>Orders</th><th>Kg ordered</th><th>Order value</th><th>In stock now</th><th>Signal</th></tr>${dm.map((d, i) => `<tr><td>${i + 1}</td><td><b>${esc(d.crop)}</b><div style="background:var(--pr);height:6px;border-radius:3px;margin-top:4px;width:${Math.max(4, Math.round(100 * d.kg / top))}%"></div></td><td>${d.n}</td><td>${d.kg.toLocaleString("en-IN")}</td><td>${fm(d.val)}</td><td>${d.stock.toLocaleString("en-IN")} kg</td><td>${i < 3 && d.n >= 2 ? "🔥 High demand" : ""}${d.stock <= 0 ? (i < 3 && d.n >= 2 ? " · " : "") + "<b style=\"color:#b91c1c\">No stock, list more</b>" : ""}</td></tr>`).join("") || '<tr><td colspan="7" class="mu">No orders in this period.</td></tr>'}</table><p class="mu">Ranked by kg ordered. Cancelled and refunded orders are not counted.</p></div>
+<div class="card tw"><h2>Latest orders</h2><table><tr><th>#</th><th>When</th><th>Crop</th><th>Buyer → Farmer</th><th>Kg</th><th>Buyer paid</th><th>Status</th></tr>${recent.map(o => `<tr><td>${o.id}</td><td>${esc(when(o.created))}</td><td>${esc(o.crop)}</td><td>${esc(o.buyer)} → ${esc(o.farmer)}</td><td>${o.qty}</td><td>${fm(paid(o))}</td><td>${stTag(o.state)}</td></tr>`).join("") || '<tr><td colspan="7" class="mu">No orders yet.</td></tr>'}</table><button class="b s" onclick="go('orders')">See all orders by day</button></div>
+<div class="card tw"><h2>Users <span id="uc" class="mu" style="font-weight:400"></span></h2><div class="row"><div style="flex:2;min-width:220px"><label>Search by name, phone, location or type</label><input id="us" type="search" autocomplete="off" placeholder="e.g. Ramesh, 93800 or Kolar" oninput="userRows()"></div><div><label>Show</label><select id="ur" onchange="userRows()"><option value="">Everyone</option><option value="farmer">Farmers</option><option value="buyer">Buyers</option></select></div></div><table style="margin-top:8px"><tr><th>Name</th><th>Role</th><th>Phone</th><th>Type / plan</th><th>Location</th></tr><tbody id="ub"></tbody></table></div>
+<div class="card"><button class="b" onclick="ver()">Verify ledger integrity</button> <span id="vr" class="mu">Ledger intact: ${s.ledger_intact ? "yes" : "NO"}</span></div>`
+    };
+
+    const _vo = V.orders;
+    V.orders = async () => {
+        if (R !== "admin") return _vo();
+        const os = await api("/orders?view=admin");
+        return `<h2>All orders <span class="mu" style="font-weight:400">· ${os.length} in total, newest first</span></h2>` + groups(os).filter(g => g.k != "Older" || g.r.length).map(g => {
+            const n = g.r.length, val = g.r.filter(live).reduce((a, o) => a + paid(o), 0), dis = g.r.filter(o => o.state == "DISPUTED").length;
+            return `<h2 style="margin-top:16px">${g.k}${g.s ? ` <span class="mu" style="font-weight:400">(${g.s})</span>` : ""} <span class="mu" style="font-weight:400">· ${n} order${n == 1 ? "" : "s"}${val > 0 ? " · " + fm(val) : ""}${dis ? ` · <b style="color:#b91c1c">${dis} disputed</b>` : ""}</span></h2>` + (g.r.map(admCard).join("") || `<p class="mu">No orders ${g.k == "Today" ? "today" : g.k == "Yesterday" ? "yesterday" : "in this period"}.</p>`)
+        }).join("")
+    };
+
+    const _at = adminTk;
+    adminTk = function (t) {
+        const h = _at(t), w = t.created ? ago(t.created) : "", k = '<span class="tag">' + t.status + "</span>";
+        return w && h.includes(k) ? h.replace(k, () => k + '<div class="mu">Raised ' + w + "</div>") : h
+    };
+    liveCard = function (l) {
+        const isNew = l.live_at && Date.now() - new Date(l.live_at).getTime() < 48 * 36e5, mk = l.buyer_markup == null ? "default markup" : "markup " + Math.round(l.buyer_markup * 1000) / 10 + "%", eh = +l.early_hours > 0 ? " · Plus early access " + l.early_hours + " h" : "";
+        return `<div class="card"><div class="row" style="align-items:center"><div><h3>#${l.id} · ${esc(l.crop)}${l.variety ? " · " + esc(l.variety) : ""}${l.grade ? " · Grade " + esc(l.grade) : ""}${isNew ? ' <span class="tag" style="background:#dcfce7;color:#166534">NEW</span>' : ""}</h3><div class="mu">${esc(l.farmer_name || "")} · ${l.qty} kg left · farmer price ${fk(l.price)}/kg<br>${l.live_at ? "Listed " + ago(l.live_at) + " · " : ""}${mk}${eh}</div></div><div><button class="b s" onclick="unpub(${l.id})">Undo publish</button></div></div></div>`
+    };
+    V.tickets = async () => {
+        const [tk, lv, os] = await Promise.all([api("/tickets?view=admin"), api("/listings?view=admin"), api("/orders?view=admin").catch(() => [])]);
+        MR = {}; TK = {}; await Promise.all([...new Set(tk.map(t => t.crop))].map(async c => { try { MR[c] = await api("/mandi/" + encodeURIComponent(c)) } catch (e) { MR[c] = { latest: null } } }));
+        const op = tk.filter(t => ["OPEN", "SCHEDULED"].includes(t.status)).sort(byId), dn = tk.filter(t => !["OPEN", "SCHEDULED"].includes(t.status)).sort(byId), lvs = [...lv].sort(byId), hot = demand(os, 30, lv).slice(0, 4);
+        return (hot.length ? `<div class="card"><b>🔥 In demand (last 30 days):</b> ${hot.map(d => `${esc(d.crop)} <span class="mu">(${d.n} order${d.n == 1 ? "" : "s"}, ${d.kg.toLocaleString("en-IN")} kg)</span>`).join(" · ")}</div>` : "") + `<h2>Open tickets (${op.length}) <span class="mu" style="font-weight:400">· newest first</span></h2>${op.map(adminTk).join("") || '<p class="mu">No open tickets.</p>'}<h2 style="margin-top:14px">Live listings (${lvs.length}) <span class="mu" style="font-weight:400">· newest first</span></h2>${lvs.map(liveCard).join("") || '<p class="mu">No live listings.</p>'}<h2 style="margin-top:14px">Closed</h2>${dn.map(tkCard).join("") || "—"}`
+    }
+})();
+</script>
+</body>
 
 </html>

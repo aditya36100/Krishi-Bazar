@@ -18,7 +18,7 @@ ACTIONS = {"fund": "FUNDED", "harvest": "HARVESTED", "ship": "SHIPPED", "deliver
            "release": "RELEASED", "dispute": "DISPUTED", "refund": "REFUNDED", "cancel": "CANCELLED"}
 
 class User(BaseModel):
-    name: str; role: str; loc: str = ""; buyer_type: str = ""
+    name: str; role: str; loc: str = ""; buyer_type: str = ""; phone: str = ""
 class Listing(BaseModel):
     farmer_id: int; crop: str; qty: float; price: float; variety: str = ""; harvest_date: str = ""; loc: str = ""
 class Order(BaseModel):
@@ -38,9 +38,14 @@ def add_user(u: User):
         raise HTTPException(400, "name is required")
     if u.role == "buyer" and u.buyer_type not in BUYER_MIN_KG:
         raise HTTPException(400, "Please choose what you will use the crop for: " + ", ".join(BUYER_MIN_KG))
+    ph = ""
+    if u.phone.strip():
+        ph = _phone(u.phone)
+        if not ph:
+            raise HTTPException(400, "Enter a valid 10-digit mobile number")
     with conn() as c:
-        return {"id": c.execute("INSERT INTO users(name,role,loc,buyer_type) VALUES(?,?,?,?)",
-                                (u.name.strip(), u.role, u.loc.strip(), u.buyer_type)).lastrowid}
+        return {"id": c.execute("INSERT INTO users(name,role,loc,buyer_type,phone) VALUES(?,?,?,?,?)",
+                                (u.name.strip(), u.role, u.loc.strip(), u.buyer_type, ph)).lastrowid}
 
 def add_listing(l: Listing):  # internal: listings are now created only when the admin approves a ticket
     if l.qty < MIN_KG:
@@ -199,7 +204,19 @@ def hist(crop: str, weeks: int = 52):
 @app.get("/users")
 def users():
     with conn() as c:
-        return [dict(r) for r in c.execute("SELECT * FROM users")]
+        rows = [dict(r) for r in c.execute("SELECT u.id, u.name, u.role, u.loc, u.buyer_type, u.phone, "
+                                           "(SELECT MAX(s.ends) FROM subscriptions s WHERE s.buyer_id=u.id) plus_until FROM users u")]
+        for u in rows:  # never send password hashes or emails to the browser; collect every phone number known for a person
+            nums = []
+            for r in c.execute("SELECT phone, alt_phone FROM tickets WHERE farmer_id=? ORDER BY id DESC", (u["id"],)):
+                nums += [r["phone"], r["alt_phone"]]
+            allp = []
+            for x in [next((x for x in nums if x), ""), u["phone"]] + nums:
+                if x and x not in allp:
+                    allp.append(x)
+            u["phone"] = allp[0] if allp else ""
+            u["phones"] = allp
+        return rows
 
 @app.get("/orders")
 def orders(view: str = "admin"):

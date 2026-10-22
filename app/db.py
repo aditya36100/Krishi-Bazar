@@ -29,6 +29,10 @@ def init():
             except sqlite3.OperationalError:
                 pass
         c.execute("CREATE TABLE IF NOT EXISTS subscriptions(id INTEGER PRIMARY KEY, buyer_id INT, plan TEXT, price REAL, starts TEXT, ends TEXT)")
+        try:
+            c.execute("ALTER TABLE users ADD COLUMN phone TEXT DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass
         for ddl in ("ALTER TABLE users ADD COLUMN buyer_type TEXT DEFAULT ''",
                     "ALTER TABLE listings ADD COLUMN grade TEXT DEFAULT ''"):
             try:
