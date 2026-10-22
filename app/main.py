@@ -81,8 +81,9 @@ def place(o: Order):
         l = c.execute("SELECT * FROM listings WHERE id=?", (o.listing_id,)).fetchone()
         if not l:
             raise HTTPException(404, "listing not found")
-        if o.qty <= 0 or o.qty > l["qty"]:
-            raise HTTPException(400, "invalid quantity")
+        o.qty = l["qty"]  # whole lot only: buyers cannot choose a quantity
+        if o.qty <= 0:
+            raise HTTPException(400, "This lot is no longer available")
         subbed = _sub(o.buyer_id)["active"]
         if not subbed and _opens_at(l) > datetime.datetime.now():
             raise HTTPException(403, "Early-access window: opens to all buyers at " + _opens_at(l).strftime("%d %b %H:%M"))
