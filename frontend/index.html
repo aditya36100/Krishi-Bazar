@@ -3,493 +3,986 @@
 
 <head>
     <meta charset="utf-8">
-    <title>Krishi Bazar</title>
+    <title>Krishi Bazar · B2B Agri Marketplace & Escrow</title>
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg: #f6f8f3;
-            --card: #fff;
-            --tx: #1d2a1f;
-            --mu: #667568;
-            --pr: #2f7d32;
-            --pr2: #e3f1e2;
-            --bd: #dde4d9;
-            --wr: #b26a00
+            --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+            --font-heading: 'Outfit', 'Plus Jakarta Sans', sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+
+            --bg: #f8fafc;
+            --card: #ffffff;
+            --card-glass: rgba(255, 255, 255, 0.88);
+            --tx: #0f172a;
+            --mu: #64748b;
+            --bd: #e2e8f0;
+            --bd-subtle: #f1f5f9;
+            --wr: #d97706;
+
+            /* Base role tokens - default Farmer */
+            --pr: #059669;
+            --pr-dark: #047857;
+            --pr2: #ecfdf5;
+            --g1: #059669;
+            --g2: #10b981;
+            --pr-glow: rgba(16, 185, 129, 0.22);
+            --sh: 0 4px 20px -2px rgba(15, 23, 42, 0.06), 0 2px 6px -1px rgba(15, 23, 42, 0.03);
+            --sh2: 0 16px 36px -4px rgba(15, 23, 42, 0.12), 0 6px 14px -2px rgba(15, 23, 42, 0.06);
         }
 
-        @media(prefers-color-scheme:dark) {
+        body[data-role=farmer] {
+            --pr: #059669;
+            --pr-dark: #047857;
+            --pr2: #ecfdf5;
+            --g1: #059669;
+            --g2: #10b981;
+            --pr-glow: rgba(16, 185, 129, 0.25);
+        }
+
+        body[data-role=buyer] {
+            --pr: #0284c7;
+            --pr-dark: #0369a1;
+            --pr2: #f0f9ff;
+            --g1: #0284c7;
+            --g2: #0ea5e9;
+            --pr-glow: rgba(2, 132, 199, 0.25);
+        }
+
+        body[data-role=admin] {
+            --pr: #4f46e5;
+            --pr-dark: #4338ca;
+            --pr2: #eef2ff;
+            --g1: #4f46e5;
+            --g2: #7c3aed;
+            --pr-glow: rgba(79, 70, 229, 0.25);
+        }
+
+        @media (prefers-color-scheme: dark) {
             :root {
-                --bg: #121a14;
-                --card: #1b261d;
-                --tx: #e7efe8;
-                --mu: #97a89a;
-                --pr: #6fcf74;
-                --pr2: #23382a;
-                --bd: #2b3b2e;
-                --wr: #f0b45a
+                --bg: #090d16;
+                --card: #111827;
+                --card-glass: rgba(17, 24, 39, 0.88);
+                --tx: #f8fafc;
+                --mu: #94a3b8;
+                --bd: #1e293b;
+                --bd-subtle: #141e33;
+                --wr: #fbbf24;
+                --sh: 0 4px 24px -2px rgba(0, 0, 0, 0.45);
+                --sh2: 0 16px 40px -4px rgba(0, 0, 0, 0.65);
             }
+            body[data-role=farmer] { --pr: #34d399; --pr2: #064e3b; --pr-dark: #10b981; }
+            body[data-role=buyer] { --pr: #38bdf8; --pr2: #082f49; --pr-dark: #0284c7; }
+            body[data-role=admin] { --pr: #818cf8; --pr2: #1e1b4b; --pr-dark: #4f46e5; }
         }
 
         * {
-            box-sizing: border-box
+            box-sizing: border-box;
         }
 
         body {
             margin: 0;
-            background: var(--bg);
+            background: radial-gradient(1100px 520px at 12% -8%, color-mix(in srgb, var(--g1) 12%, transparent), transparent 70%),
+                        radial-gradient(900px 480px at 95% -5%, color-mix(in srgb, var(--g2) 10%, transparent), transparent 65%),
+                        var(--bg);
+            background-attachment: fixed;
             color: var(--tx);
-            font: 15px/1.45 system-ui, Segoe UI, Roboto, sans-serif
+            font: 14px/1.55 var(--font-sans);
+            letter-spacing: -0.01em;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
         }
 
+        /* Top Brand Header */
+        /* Top Brand Header - Compact 52px */
         header {
-            background: var(--pr);
-            color: #fff;
-            padding: 12px 16px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 8px
-        }
-
-        header h1 {
-            font-size: 18px;
-            margin: 0
-        }
-
-        #badge {
-            padding: 6px 16px;
-            font-size: 13px;
-            background: var(--pr2);
-            color: var(--pr)
-        }
-
-        #badge.w {
-            background: var(--wr);
-            color: #fff
-        }
-
-        nav {
-            display: flex;
-            gap: 4px;
-            padding: 8px;
-            overflow-x: auto;
-            background: var(--card);
-            border-bottom: 1px solid var(--bd);
             position: sticky;
             top: 0;
-            z-index: 5
+            z-index: 50;
+            background: color-mix(in srgb, var(--card) 90%, transparent);
+            backdrop-filter: blur(18px);
+            -webkit-backdrop-filter: blur(18px);
+            border-bottom: 1px solid var(--bd);
+            padding: 0 20px;
+            height: 52px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            box-shadow: 0 2px 10px -2px rgba(0, 0, 0, 0.04);
+        }
+
+        .brand-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            text-decoration: none;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        .brand-logo {
+            width: 32px;
+            height: 32px;
+            border-radius: 9px;
+            background: linear-gradient(135deg, var(--g1), var(--g2));
+            display: grid;
+            place-items: center;
+            font-size: 16px;
+            box-shadow: 0 2px 8px var(--pr-glow);
+            color: #fff;
+            flex-shrink: 0;
+        }
+
+        .brand-text h1 {
+            font-family: var(--font-heading);
+            font-size: 16px;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            margin: 0;
+            line-height: 1.1;
+            color: var(--tx);
+        }
+
+        .brand-sub {
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            color: var(--pr);
+            display: block;
+        }
+
+        /* Nav Integrated inside Header */
+        nav {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            padding: 0 8px;
+            background: transparent;
+            border: none;
+            position: static;
+            flex: 1;
+            overflow-x: auto;
         }
 
         nav button {
-            border: 0;
-            background: none;
+            border: 1px solid transparent;
+            background: transparent;
             color: var(--mu);
-            padding: 8px 14px;
-            border-radius: 20px;
-            font-size: 14px;
+            padding: 5px 12px;
+            border-radius: 9999px;
+            font-size: 12.5px;
+            font-weight: 600;
+            font-family: var(--font-sans);
             cursor: pointer;
-            white-space: nowrap
+            white-space: nowrap;
+            transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            height: 30px;
+        }
+
+        nav button:hover {
+            color: var(--tx);
+            background: var(--pr2);
         }
 
         nav button.on {
             background: var(--pr2);
             color: var(--pr);
-            font-weight: 600
+            border-color: color-mix(in srgb, var(--pr) 25%, transparent);
+            font-weight: 700;
+            box-shadow: none;
         }
 
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: nowrap;
+            flex-shrink: 0;
+        }
+
+        /* Segmented Role Switcher */
+        .role-switcher {
+            display: flex;
+            background: var(--bd-subtle);
+            padding: 2px;
+            border-radius: 9999px;
+            border: 1px solid var(--bd);
+            gap: 2px;
+            height: 32px;
+            box-sizing: border-box;
+            align-items: center;
+        }
+
+        .role-btn {
+            border: 0;
+            background: transparent;
+            color: var(--mu);
+            padding: 4px 10px;
+            border-radius: 9999px;
+            font-size: 12px;
+            font-weight: 600;
+            font-family: var(--font-sans);
+            cursor: pointer;
+            transition: all 0.15s ease;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            white-space: nowrap;
+            height: 26px;
+        }
+
+        .role-btn:hover {
+            color: var(--tx);
+        }
+
+        .role-btn.active {
+            background: var(--card);
+            color: var(--pr);
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+            font-weight: 700;
+        }
+
+        .pill-select {
+            border-radius: 9999px;
+            border: 1px solid var(--bd);
+            background: var(--card);
+            color: var(--tx);
+            padding: 4px 8px 4px 10px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            outline: none;
+            height: 32px;
+            width: auto;
+            max-width: 100px;
+            flex-shrink: 0;
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+
+        .pill-select:focus {
+            border-color: var(--pr);
+            box-shadow: 0 0 0 3px var(--pr-glow);
+        }
+
+        .header-actions .b.s {
+            margin: 0;
+            padding: 5px 12px;
+            font-size: 12px;
+            font-weight: 700;
+            height: 32px;
+            border-radius: 9999px;
+            flex-shrink: 0;
+            white-space: nowrap;
+            display: inline-flex;
+            align-items: center;
+        }
+
+        /* Status Badge / Mandi Pulse - Slim notification ticker */
+        #badge {
+            padding: 4px 16px;
+            font-size: 11px;
+            font-weight: 600;
+            line-height: 1.25;
+            background: color-mix(in srgb, var(--pr2) 75%, var(--card));
+            color: var(--pr);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            border-bottom: 1px solid var(--bd);
+            letter-spacing: 0.01em;
+            transition: background 0.2s;
+            min-height: 22px;
+        }
+
+        #badge::before {
+            content: "";
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #22c55e;
+            box-shadow: 0 0 6px #22c55e;
+            animation: pulseDot 2s infinite;
+            flex-shrink: 0;
+        }
+
+        #badge.w {
+            background: color-mix(in srgb, var(--wr) 15%, var(--card));
+            color: var(--wr);
+        }
+
+        #badge.w::before {
+            background: var(--wr);
+            box-shadow: 0 0 6px var(--wr);
+        }
+
+        /* Main App Container */
         main {
-            max-width: 980px;
+            max-width: 1140px;
             margin: 0 auto;
-            padding: 14px
+            padding: 24px 20px 80px;
         }
 
+        /* Modern Executive Hero Header */
+        .hero {
+            position: relative;
+            border-radius: 20px;
+            padding: 18px 24px;
+            margin-bottom: 22px;
+            background: var(--card);
+            border: 1px solid var(--bd);
+            border-top: 3px solid var(--pr);
+            box-shadow: 0 4px 16px -2px rgba(0, 0, 0, 0.04);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .hero-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            min-width: 260px;
+            flex: 1;
+        }
+
+        .hero .ic {
+            font-size: 24px;
+            background: var(--pr2);
+            border: 1px solid color-mix(in srgb, var(--pr) 25%, transparent);
+            width: 48px;
+            height: 48px;
+            border-radius: 14px;
+            display: grid;
+            place-items: center;
+            flex-shrink: 0;
+            box-shadow: 0 2px 8px color-mix(in srgb, var(--pr) 15%, transparent);
+        }
+
+        .hero-text {
+            flex: 1;
+        }
+
+        .hero-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            color: var(--pr);
+            margin-bottom: 3px;
+        }
+
+        .hero-tag-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--pr);
+            box-shadow: 0 0 6px var(--pr);
+            animation: pulseDot 2s infinite;
+        }
+
+        .hero h1 {
+            font-family: var(--font-heading);
+            font-size: 21px;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            margin: 0;
+            color: var(--tx);
+            line-height: 1.25;
+        }
+
+        .hero p {
+            margin: 3px 0 0;
+            color: var(--mu);
+            font-size: 13px;
+            font-weight: 500;
+            line-height: 1.4;
+            max-width: 620px;
+        }
+
+        .hero-right {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .hero .chip {
+            background: var(--bg);
+            border: 1px solid var(--bd);
+            color: var(--tx);
+            padding: 6px 14px;
+            border-radius: 9999px;
+            font-size: 12px;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .hero-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .hero-actions .b.s {
+            margin: 0;
+            padding: 7px 14px;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        /* Cards */
         .card {
             background: var(--card);
             border: 1px solid var(--bd);
-            border-radius: 12px;
-            padding: 14px;
-            margin-bottom: 12px
+            border-radius: 20px;
+            padding: 22px;
+            margin-bottom: 16px;
+            box-shadow: var(--sh);
+            transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s, border-color 0.2s;
         }
 
-        .grid {
+        .grid > .card:hover, .stats > .card[onclick]:hover {
+            transform: translateY(-3px);
+            box-shadow: var(--sh2);
+            border-color: color-mix(in srgb, var(--pr) 50%, var(--bd));
+        }
+
+        /* Stats & KPI Grid */
+        .stats {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-            gap: 12px
+            grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+            gap: 14px;
+            margin-bottom: 20px;
         }
 
+        .stats > .card {
+            position: relative;
+            overflow: hidden;
+            padding: 22px 20px;
+            margin-bottom: 0;
+            border-radius: 18px;
+        }
+
+        .stats > .card::before {
+            content: "";
+            position: absolute;
+            left: 0;
+            top: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, var(--g1), var(--g2));
+        }
+
+        .stats > .card:nth-child(4n+2)::before { background: linear-gradient(90deg, #f59e0b, #f97316); }
+        .stats > .card:nth-child(4n+3)::before { background: linear-gradient(90deg, #06b6d4, #3b82f6); }
+        .stats > .card:nth-child(4n+4)::before { background: linear-gradient(90deg, #8b5cf6, #ec4899); }
+
+        .big {
+            font-family: var(--font-heading);
+            font-size: 30px;
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            color: var(--tx);
+            line-height: 1.15;
+            margin: 6px 0 4px;
+        }
+
+        .stats .big {
+            background: linear-gradient(135deg, var(--tx), color-mix(in srgb, var(--tx) 65%, var(--g1)));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+
+        /* Typography & Headings */
         h2 {
-            font-size: 17px;
-            margin: 0 0 10px
+            font-family: var(--font-heading);
+            font-size: 19px;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            margin: 0 0 14px;
+            color: var(--tx);
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
 
         h3 {
-            font-size: 15px;
-            margin: 0 0 4px
-        }
-
-        label {
-            display: block;
-            font-size: 12px;
-            color: var(--mu);
-            margin: 8px 0 3px
-        }
-
-        input,
-        select {
-            width: 100%;
-            padding: 9px;
-            border: 1px solid var(--bd);
-            border-radius: 8px;
-            background: var(--bg);
+            font-family: var(--font-heading);
+            font-size: 16px;
+            font-weight: 700;
+            letter-spacing: -0.01em;
+            margin: 0 0 6px;
             color: var(--tx);
-            font-size: 15px
-        }
-
-        .b {
-            background: var(--pr);
-            color: #fff;
-            border: 0;
-            border-radius: 8px;
-            padding: 8px 12px;
-            font-size: 13px;
-            cursor: pointer;
-            margin: 8px 4px 0 0
-        }
-
-        .b.s {
-            background: var(--pr2);
-            color: var(--pr)
         }
 
         .mu {
             color: var(--mu);
-            font-size: 13px
+            font-size: 13px;
+            line-height: 1.5;
         }
 
+        /* Grid */
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+            gap: 16px;
+        }
+
+        /* Buttons */
+        .b {
+            background: linear-gradient(135deg, var(--g1), var(--g2));
+            color: #ffffff;
+            border: 0;
+            border-radius: 9999px;
+            padding: 10px 20px;
+            font-size: 13px;
+            font-weight: 700;
+            font-family: var(--font-sans);
+            cursor: pointer;
+            box-shadow: 0 4px 14px var(--pr-glow);
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            margin: 10px 6px 0 0;
+            text-decoration: none;
+        }
+
+        .b:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px var(--pr-glow);
+        }
+
+        .b:active {
+            transform: translateY(0);
+        }
+
+        .b.s {
+            background: var(--pr2);
+            color: var(--pr);
+            box-shadow: none;
+            border: 1px solid color-mix(in srgb, var(--pr) 25%, transparent);
+        }
+
+        .b.s:hover {
+            background: color-mix(in srgb, var(--pr) 18%, var(--pr2));
+            transform: translateY(-1px);
+        }
+
+        .b:disabled {
+            opacity: 0.55;
+            cursor: not-allowed;
+            transform: none !important;
+            box-shadow: none !important;
+        }
+
+        /* Tags & Badges */
         .tag {
             background: var(--pr2);
             color: var(--pr);
-            border-radius: 10px;
-            padding: 2px 8px;
-            font-size: 12px
+            border-radius: 9999px;
+            padding: 3px 10px;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.03em;
+            text-transform: uppercase;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            border: 1px solid color-mix(in srgb, var(--pr) 20%, transparent);
         }
 
-        .big {
-            font-size: 22px;
-            font-weight: 700;
-            color: var(--pr)
+        .tag-new {
+            background: linear-gradient(135deg, #f59e0b, #ef4444) !important;
+            color: #ffffff !important;
+            box-shadow: 0 2px 8px rgba(239, 68, 68, 0.35);
+            border: 0 !important;
+            animation: pulseGlow 2.5s infinite;
+        }
+
+        @keyframes pulseGlow {
+            0%, 100% { box-shadow: 0 2px 8px rgba(239, 68, 68, 0.35); }
+            50% { box-shadow: 0 2px 14px rgba(245, 158, 11, 0.6); }
         }
 
         .up {
             color: var(--pr);
-            font-weight: 600
+            font-weight: 700;
         }
 
-        .stats {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 10px;
-            margin-bottom: 12px
+        /* Form Controls */
+        label {
+            display: block;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--mu);
+            margin: 12px 0 5px;
         }
 
+        input, select, textarea {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1px solid var(--bd);
+            border-radius: 12px;
+            background: var(--card);
+            color: var(--tx);
+            font-size: 14px;
+            font-family: var(--font-sans);
+            transition: all 0.15s ease;
+            outline: none;
+        }
+
+        input:focus, select:focus, textarea:focus {
+            border-color: var(--pr);
+            box-shadow: 0 0 0 3px var(--pr-glow);
+        }
+
+        .row {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .row > * {
+            flex: 1;
+            min-width: 140px;
+        }
+
+        /* Tables */
         .tw {
-            overflow-x: auto
+            overflow-x: auto;
+            border: 1px solid var(--bd);
+            border-radius: 16px;
+            background: var(--card);
         }
 
         table {
-            border-collapse: collapse;
+            border-collapse: separate;
+            border-spacing: 0;
             width: 100%;
-            min-width: 560px
+            min-width: 580px;
         }
 
-        th,
-        td {
-            text-align: left;
-            padding: 7px;
+        th {
+            background: var(--bd-subtle);
+            color: var(--mu);
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            padding: 12px 14px;
             border-bottom: 1px solid var(--bd);
-            font-size: 13px
+            text-align: left;
         }
 
+        td {
+            padding: 12px 14px;
+            border-bottom: 1px solid var(--bd-subtle);
+            font-size: 13px;
+        }
+
+        tbody tr:last-child td {
+            border-bottom: 0;
+        }
+
+        tbody tr:hover td {
+            background: color-mix(in srgb, var(--pr2) 40%, transparent);
+        }
+
+        /* Steps Timeline */
         .steps {
             display: flex;
-            gap: 4px;
-            margin: 8px 0
+            gap: 6px;
+            margin: 12px 0 10px;
         }
 
         .steps i {
             flex: 1;
             height: 6px;
-            border-radius: 3px;
-            background: var(--bd)
+            border-radius: 9999px;
+            background: var(--bd);
+            transition: all 0.3s ease;
         }
 
         .steps i.d {
-            background: var(--pr)
+            background: linear-gradient(90deg, var(--g1), var(--g2));
+            box-shadow: 0 0 8px var(--pr-glow);
         }
 
-        .row {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap
-        }
-
-        .row>* {
-            flex: 1;
-            min-width: 130px
-        }
-
-        #toast {
-            position: fixed;
-            left: 50%;
-            transform: translateX(-50%);
-            bottom: 16px;
-            background: var(--tx);
-            color: var(--bg);
-            padding: 10px 16px;
-            border-radius: 20px;
-            display: none;
-            z-index: 9;
-            max-width: 90%
-        }
-
-        .sb {
-            display: none;
-            position: absolute;
-            left: 0;
-            right: 0;
-            top: 100%;
-            z-index: 20;
-            background: var(--card);
-            border: 1px solid var(--bd);
-            border-radius: 8px;
-            max-height: 240px;
-            overflow-y: auto;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, .15)
-        }
-
-        .sb div {
-            padding: 9px 12px;
-            cursor: pointer;
-            font-size: 14px
-        }
-
-        .sb div:hover {
-            background: var(--pr2)
-        }
-
+        /* Plan / Membership Styling */
         .pl {
-            background: linear-gradient(135deg, #0f2027, #1f4e5f 60%, #2a7f62);
-            color: #fff;
-            border-radius: 18px;
-            padding: 26px;
-            margin-bottom: 16px
+            background: linear-gradient(135deg, #091e2b 0%, #0e374d 50%, #0d9488 100%);
+            color: #ffffff;
+            border-radius: 22px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: var(--sh2);
         }
 
-        .pl h1 {
-            margin: 0 0 6px;
-            font-size: 26px
-        }
-
-        .pl p {
-            margin: 0;
-            opacity: .9
-        }
+        .pl h1 { margin: 0 0 8px; font-size: 28px; font-family: var(--font-heading); font-weight: 800; }
+        .pl p { margin: 0; opacity: 0.9; font-size: 15px; }
 
         .lg2 {
             display: inline-block;
-            background: #fff;
-            color: #0f5132;
-            border-radius: 6px;
-            padding: 2px 10px;
+            background: rgba(255, 255, 255, 0.18);
+            color: #ffffff;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 9999px;
+            padding: 3px 12px;
             font-weight: 800;
-            font-size: 12px;
-            letter-spacing: .8px;
-            margin-bottom: 10px
+            font-size: 11px;
+            letter-spacing: 0.08em;
+            margin-bottom: 12px;
         }
 
         .bn {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-            gap: 10px;
-            margin-bottom: 12px
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 12px;
+            margin-bottom: 16px;
         }
 
-        .bn>div {
+        .bn > div {
             display: flex;
-            gap: 10px;
+            gap: 12px;
             align-items: flex-start;
             background: var(--card);
             border: 1px solid var(--bd);
-            border-radius: 12px;
-            padding: 12px
+            border-radius: 16px;
+            padding: 14px;
         }
 
-        .bn>div>span {
-            font-size: 22px
-        }
-
-        .bn b {
-            display: block;
-            font-size: 14px
-        }
+        .bn > div > span { font-size: 24px; }
+        .bn b { display: block; font-size: 14px; font-weight: 700; margin-bottom: 2px; }
 
         .pc {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-            gap: 14px;
-            margin: 14px 0
+            gap: 16px;
+            margin: 16px 0;
         }
 
         .pp {
             position: relative;
             background: var(--card);
             border: 2px solid var(--bd);
-            border-radius: 16px;
-            padding: 22px 16px 16px;
+            border-radius: 18px;
+            padding: 24px 18px 18px;
             cursor: pointer;
-            transition: border-color .15s, box-shadow .15s
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
         }
 
         .pp:hover {
-            border-color: var(--pr)
+            border-color: var(--pr);
+            transform: translateY(-2px);
         }
 
         .pp.on {
             border-color: var(--pr);
-            box-shadow: 0 0 0 3px rgba(34, 160, 90, .25)
+            box-shadow: 0 0 0 4px var(--pr-glow);
         }
 
         .pp .rd {
             position: absolute;
-            right: 14px;
-            top: 18px;
+            right: 16px;
+            top: 20px;
             width: 20px;
             height: 20px;
             border-radius: 50%;
-            border: 2px solid var(--bd)
+            border: 2px solid var(--bd);
         }
 
         .pp.on .rd {
-            border: 6px solid var(--pr)
+            border: 6px solid var(--pr);
         }
 
         .pp .tg {
             position: absolute;
-            left: 14px;
-            top: -11px;
-            background: #f59e0b;
-            color: #1a1a1a;
-            font-size: 11px;
+            left: 16px;
+            top: -12px;
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            color: #ffffff;
+            font-size: 10px;
             font-weight: 800;
-            padding: 3px 10px;
-            border-radius: 99px
+            letter-spacing: 0.05em;
+            padding: 3px 12px;
+            border-radius: 9999px;
+            box-shadow: 0 2px 8px rgba(245, 158, 11, 0.35);
         }
 
         .pp .pr {
-            font-size: 30px;
-            font-weight: 800
+            font-family: var(--font-heading);
+            font-size: 32px;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            margin: 8px 0;
         }
 
-        .pp .pr small {
-            font-size: 14px;
-            font-weight: 500;
-            color: var(--mu)
-        }
+        .pp .pr small { font-size: 14px; font-weight: 500; color: var(--mu); }
 
         .sv {
             display: inline-block;
             background: var(--pr2);
             color: var(--pr);
-            border-radius: 6px;
-            padding: 2px 8px;
+            border-radius: 8px;
+            padding: 3px 10px;
             font-size: 12px;
             font-weight: 700;
-            margin-top: 6px
+            margin-top: 8px;
         }
 
         .ck {
             width: 100%;
-            max-width: 420px;
-            padding: 13px;
+            max-width: 440px;
+            padding: 14px;
             font-size: 15px;
-            margin: 6px 0
+            border-radius: 9999px;
+            margin: 10px auto;
         }
 
         .ms {
             display: flex;
             align-items: center;
             gap: 12px;
-            background: linear-gradient(90deg, #0f2027, #2a7f62);
-            color: #fff;
+            background: linear-gradient(135deg, #091e2b, #0d9488);
+            color: #ffffff;
+            border-radius: 16px;
+            padding: 12px 18px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+            box-shadow: var(--sh);
+        }
+
+        .ms a { color: #ffffff; font-weight: 700; text-decoration: underline; cursor: pointer; margin-left: auto; }
+
+        /* Autocomplete dropdown */
+        .sb {
+            display: none;
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 100%;
+            z-index: 50;
+            background: var(--card);
+            border: 1px solid var(--bd);
             border-radius: 12px;
+            max-height: 250px;
+            overflow-y: auto;
+            box-shadow: var(--sh2);
+            margin-top: 4px;
+        }
+
+        .sb div {
             padding: 10px 14px;
-            margin-bottom: 12px;
-            flex-wrap: wrap
-        }
-
-        .ms .lg2 {
-            margin: 0;
-            font-size: 11px;
-            padding: 2px 8px
-        }
-
-        .ms a {
-            color: #fff;
-            text-decoration: underline;
             cursor: pointer;
-            margin-left: auto;
-            font-size: 13px
+            font-size: 13px;
+            border-bottom: 1px solid var(--bd-subtle);
         }
 
-        .bar {
-            height: 8px;
-            background: rgba(255, 255, 255, .25);
-            border-radius: 99px;
-            overflow: hidden;
-            margin-top: 10px
-        }
-
-        .bar i {
-            display: block;
-            height: 100%;
-            background: #fff
-        }
-
-        svg text {
-            fill: var(--mu);
-            font-size: 10px
-        }
-
-        code {
+        .sb div:hover {
             background: var(--pr2);
-            padding: 2px 6px;
-            border-radius: 4px
+            color: var(--pr);
         }
 
-        .lg {
-            font: 12px monospace;
+        /* Toast */
+        #toast {
+            position: fixed;
+            left: 50%;
+            transform: translateX(-50%);
+            bottom: 24px;
+            background: #0f172a;
+            color: #ffffff;
+            padding: 12px 24px;
+            border-radius: 9999px;
+            display: none;
+            z-index: 9999;
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+            font-weight: 600;
+            font-size: 14px;
+            letter-spacing: 0.01em;
+        }
+
+        /* Loading Spinner */
+        .loading-box {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            padding: 60px 20px;
             color: var(--mu);
-            margin-top: 6px
+            font-weight: 600;
+        }
+
+        .spinner {
+            width: 24px;
+            height: 24px;
+            border: 3px solid var(--bd);
+            border-top-color: var(--pr);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Media queries */
+        @media (max-width: 900px) {
+            header { height: auto; padding: 10px 16px; flex-wrap: wrap; }
+            .brand-sub { display: none; }
+            nav { order: 3; width: 100%; justify-content: flex-start; padding-top: 6px; }
+            .hero { padding: 16px; }
         }
     </style>
 </head>
 
 <body>
     <header>
-        <h1>🌱 Krishi Bazar</h1>
-        <div style="display:flex;gap:8px"><button class="b s" style="margin:0"
-                onclick="go('register')">Register</button><select id="role" style="width:auto"
-                onchange="setRole(this.value)">
+        <div class="brand-group" onclick="go(TABS[R][0])">
+            <div class="brand-logo">🌱</div>
+            <div class="brand-text">
+                <h1>Krishi Bazar</h1>
+                <span class="brand-sub">B2B Agri Marketplace</span>
+            </div>
+        </div>
+        <nav id="nav"></nav>
+        <div class="header-actions">
+            <div class="role-switcher">
+                <button class="role-btn active" data-role="farmer" onclick="setRole('farmer')">🌾 Farmer</button>
+                <button class="role-btn" data-role="buyer" onclick="setRole('buyer')">🛒 Buyer</button>
+                <button class="role-btn" data-role="admin" onclick="setRole('admin')">🛡️ Admin</button>
+            </div>
+            <select id="role" style="display:none" onchange="setRole(this.value)">
                 <option value="farmer">View as: Farmer</option>
                 <option value="buyer">View as: Buyer</option>
                 <option value="admin">View as: Admin</option>
-            </select><select id="lang" style="width:auto" onchange="L=this.value;go(tab)">
+            </select>
+            <select id="lang" class="pill-select" onchange="L=this.value;go(tab)">
                 <option value="en">English</option>
                 <option value="kn">ಕನ್ನಡ</option>
-            </select></div>
+            </select>
+            <button class="b s" style="margin:0" onclick="go('register')">Register</button>
+        </div>
     </header>
     <div id="badge"></div>
-    <nav id="nav"></nav>
     <main id="app"></main>
     <div id="toast"></div>
     <script>
@@ -575,17 +1068,146 @@ if (!/^(\+?91|0)?[6-9]\d{9}$/.test(ph.replace(/[\s-]/g, ""))) { alert("Please en
 <div id="rb"><label>What will you use the crop for?</label><select id="rt"><option value="">Choose...</option>${BT.map(b => `<option>${b}</option>`).join("")}</select><p class="mu">Your buyer type sets your minimum order size.</p></div><button class="b" onclick="reg()">Register</button></div>`;
         V.farmer = async () => {
             const F = U.filter(u => u.role == "farmer"); if (!F.length) return noSeed(); await loadVR(); const [ls, os, tk] = await Promise.all([api(`/listings?view=farmer&farmer_id=${fid}`), api("/orders?view=farmer"), api(`/tickets?view=farmer&farmer_id=${fid}`)]);
-            return `<div class="card"><label>Logged in as</label><select onchange="fid=+this.value;go('farmer')">${F.map(f => `<option value="${f.id}" ${f.id == fid ? "selected" : ""}>${f.name} · ${f.loc}</option>`).join("")}</select></div>
-<div class="card"><h2>Raise a ticket to sell your crop</h2><p class="mu">Tell us what you have. Our team will visit to check quality, grade it and agree the price with you on the spot. Only then is it listed for buyers.</p>
-<div class="row"><div style="position:relative;flex:2;min-width:220px"><label>Crop and variety</label><input id="c" autocomplete="off" placeholder="Start typing, e.g. potato" oninput="sugBox()" onfocus="sugBox()" onblur="setTimeout(()=>$('#sb').style.display='none',200)"><div id="sb" class="sb"></div></div>
-<div><label>Quantity (min 100 kg)</label><div style="display:flex;gap:6px"><input id="q" type="number" min="1" value="100"><select id="un" style="width:96px"><option value="1">kg</option><option value="100">quintal</option></select></div></div></div>
-<div class="row"><div><label>Farm location (village, taluk, district)</label><input id="lc" value="${(U.find(u => u.id == fid) || {}).loc || ""}"></div><div><label>Contact number</label><input id="ph" type="tel" inputmode="numeric" maxlength="14" placeholder="10-digit mobile"></div><div><label>Alternate number (optional)</label><input id="ph2" type="tel" inputmode="numeric" maxlength="14"></div></div>
-<div class="row"><div><label>Best date for our quality visit</label><input id="vd" type="date" min="${dd(0)}" value="${dd(2)}"></div><div><label>Best time</label><select id="vs"><option>Morning (8-11 am)</option><option>Midday (11 am-2 pm)</option><option>Afternoon (2-5 pm)</option><option>Evening (5-7 pm)</option></select></div></div>
-<div class="row"><div><label>Video of your crop (required, 1 video)</label><input id="vid" type="file" accept="video/*"></div><div><label>Photos (optional, up to 7)</label><input id="pho" type="file" accept="image/*" multiple></div></div>
-<label>Notes (optional)</label><input id="nt" placeholder="e.g. harvested yesterday, stored in a cool shed"><button class="b" id="tb" onclick="raiseTk()">Submit ticket</button></div>
-<h2>My tickets</h2>${tk.map(tkCard).join("") || '<p class="mu">No tickets yet.</p>'}
-<h2>${t("my")} <span class="mu" style="font-weight:400">(live after admin approval)</span></h2><div class="grid">${ls.filter(l => l.farmer_id == fid).map(l => `<div class="card"><h3>${l.crop}${l.variety ? " · " + l.variety : ""}${l.grade ? ` <span class="tag">Grade ${l.grade}</span>` : ""}</h3><div class="mu">${l.qty} kg available (${(l.qty / 100).toFixed(l.qty % 100 ? 1 : 0)} quintal)</div><div class="big">${fk(l.price)}/kg</div><div class="mu">${prem(l)}</div></div>`).join("") || "—"}</div>
-<h2 style="margin-top:14px">${t("myo")}</h2>${os.filter(o => o.farmer_id == fid).map(ordCard).join("") || "—"}`
+            const curFarmer = U.find(u => u.id == fid) || F[0] || {};
+            const farmerLs = ls.filter(l => l.farmer_id == fid);
+            const farmerOs = os.filter(o => o.farmer_id == fid);
+            const stockKg = farmerLs.reduce((a, l) => a + (+l.qty || 0), 0);
+            const salesVal = farmerOs.filter(o => !["CANCELLED", "REFUNDED"].includes(o.state)).reduce((a, o) => a + (+o.amount || 0), 0);
+            const openTk = tk.filter(x => ["OPEN", "SCHEDULED"].includes(x.status)).length;
+            const CROP_ICONS = window.CROP_ICONS || { Tomato: "🍅", Potato: "🥔", Onion: "🧅", Pomegranate: "🍎", Avocado: "🥑", "Dragon fruit": "🐉", Banana: "🍌", Mango: "🥭", Papaya: "🍈", Grapes: "🍇", Strawberry: "🍓", Guava: "🍏", Capsicum: "🫑", Broccoli: "🥦", Zucchini: "🥒", Cabbage: "🥬", Cauliflower: "🥦", Carrot: "🥕", Beetroot: "🍠", Lettuce: "🥗" };
+
+            return `<div class="card" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding:16px 20px">
+    <div style="display:flex;align-items:center;gap:12px">
+        <div style="font-size:28px;background:var(--pr2);width:46px;height:46px;border-radius:14px;display:grid;place-items:center">👨‍🌾</div>
+        <div>
+            <div style="font-size:12px;font-weight:700;color:var(--mu);text-transform:uppercase;letter-spacing:0.04em">Farmer Profile</div>
+            <b style="font-size:16px">${curFarmer.name || "Farmer"}</b> · <span class="mu">${curFarmer.loc || "Karnataka"}</span>
+        </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+        <label style="margin:0;font-size:12px;color:var(--mu);font-weight:600">Switch account:</label>
+        <select class="pill-select" onchange="fid=+this.value;go('farmer')">${F.map(f => `<option value="${f.id}" ${f.id == fid ? "selected" : ""}>${f.name} · ${f.loc}</option>`).join("")}</select>
+    </div>
+</div>
+
+<div class="stats">
+    <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <span class="mu" style="font-weight:700;font-size:12px;text-transform:uppercase">Active Lots</span>
+            <span style="font-size:18px;background:var(--pr2);padding:4px 8px;border-radius:8px">🌱</span>
+        </div>
+        <div class="big">${farmerLs.length}</div>
+        <div class="mu" style="font-size:12px">${stockKg.toLocaleString("en-IN")} kg live stock</div>
+    </div>
+    <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <span class="mu" style="font-weight:700;font-size:12px;text-transform:uppercase">Farmer Orders</span>
+            <span style="font-size:18px;background:var(--pr2);padding:4px 8px;border-radius:8px">📦</span>
+        </div>
+        <div class="big">${farmerOs.length}</div>
+        <div class="mu" style="font-size:12px">${fm(salesVal)} order value</div>
+    </div>
+    <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <span class="mu" style="font-weight:700;font-size:12px;text-transform:uppercase">Quality Visits</span>
+            <span style="font-size:18px;background:var(--pr2);padding:4px 8px;border-radius:8px">🎫</span>
+        </div>
+        <div class="big">${openTk}</div>
+        <div class="mu" style="font-size:12px">${openTk ? "Scheduled or pending team visit" : "All lots inspected"}</div>
+    </div>
+</div>
+
+<div class="card" style="border:1px solid color-mix(in srgb, var(--pr) 30%, var(--bd))">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+        <span style="font-size:22px">🚜</span>
+        <h2 style="margin:0">Raise a ticket to sell your crop</h2>
+    </div>
+    <p class="mu" style="margin:0 0 16px;font-size:13px">Tell us what you have. Our team will visit your farm to check quality, grade the produce, and agree on a fair direct price on the spot. Only then is it published to buyers with 100% escrow protection.</p>
+    
+    <div class="row">
+        <div style="position:relative;flex:2;min-width:220px">
+            <label>Crop and variety</label>
+            <input id="c" autocomplete="off" placeholder="Start typing, e.g. potato" oninput="sugBox()" onfocus="sugBox()" onblur="setTimeout(()=>$('#sb').style.display='none',200)">
+            <div id="sb" class="sb"></div>
+        </div>
+        <div>
+            <label>Quantity (min 100 kg)</label>
+            <div style="display:flex;gap:6px">
+                <input id="q" type="number" min="1" value="100">
+                <select id="un" style="width:96px"><option value="1">kg</option><option value="100">quintal</option></select>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div>
+            <label>Farm location (village, taluk, district)</label>
+            <input id="lc" value="${curFarmer.loc || ""}">
+        </div>
+        <div>
+            <label>Contact mobile number</label>
+            <input id="ph" type="tel" inputmode="numeric" maxlength="14" placeholder="10-digit mobile" value="${curFarmer.phone || ""}">
+        </div>
+        <div>
+            <label>Alternate number (optional)</label>
+            <input id="ph2" type="tel" inputmode="numeric" maxlength="14">
+        </div>
+    </div>
+
+    <div class="row">
+        <div>
+            <label>Preferred date for our quality visit</label>
+            <input id="vd" type="date" min="${dd(0)}" value="${dd(2)}">
+        </div>
+        <div>
+            <label>Preferred time slot</label>
+            <select id="vs">
+                <option>Morning (8-11 am)</option>
+                <option>Midday (11 am-2 pm)</option>
+                <option>Afternoon (2-5 pm)</option>
+                <option>Evening (5-7 pm)</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="row">
+        <div>
+            <label>Video of your crop (required · 1 video)</label>
+            <input id="vid" type="file" accept="video/*">
+        </div>
+        <div>
+            <label>Photos of harvest / farm (optional · up to 7 photos)</label>
+            <input id="pho" type="file" accept="image/*" multiple>
+        </div>
+    </div>
+
+    <label>Notes (optional)</label>
+    <input id="nt" placeholder="e.g. harvested yesterday, stored in cool shed, ready for immediate dispatch">
+    <button class="b" id="tb" style="margin-top:14px" onclick="raiseTk()">Submit Ticket for Free Quality Visit →</button>
+</div>
+
+<h2 style="margin-top:24px">🎫 My Inspection Tickets (${tk.length})</h2>
+${tk.map(tkCard).join("") || '<p class="mu">No tickets yet. Raise a ticket above to list produce.</p>'}
+
+<h2 style="margin-top:24px">${t("my")} <span class="mu" style="font-weight:400">(live on marketplace after admin grading)</span></h2>
+<div class="grid">
+${farmerLs.map(l => {
+    const icon = CROP_ICONS[l.crop] || "🌱";
+    return `<div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <span style="font-size:28px">${icon}</span>
+            ${l.grade ? `<span class="tag">Grade ${l.grade}</span>` : ""}
+        </div>
+        <h3 style="margin:0 0 4px">${l.crop}${l.variety ? " · " + l.variety : ""}</h3>
+        <div class="mu" style="font-size:13px">${l.qty} kg available (${(l.qty / 100).toFixed(l.qty % 100 ? 1 : 0)} quintal)</div>
+        <div class="big" style="color:var(--pr);margin:8px 0 4px">${fk(l.price)}/kg</div>
+        <div class="mu" style="font-size:12px">${prem(l)}</div>
+    </div>`;
+}).join("") || '<p class="mu">No active listings yet. Once your ticket is approved, lots appear here.</p>'}
+</div>
+
+<h2 style="margin-top:24px">${t("myo")} (${farmerOs.length})</h2>
+${farmerOs.map(ordCard).join("") || '<p class="mu">No orders received yet.</p>'}`;
         };
         after.farmer = () => { };
         async function sug() {
@@ -677,9 +1299,20 @@ ${earlyNote(l)}<div class="mu">${Math.min(sb.min_order, l.qty)} kg = <b>${fm(l.p
         };
         async function ver() { const r = await api("/ledger/verify"); $("#vr").textContent = r.intact ? "Ledger intact: yes" : "TAMPERING detected at entry " + r.first_bad_id }
         const TABS = { farmer: ["farmer"], buyer: ["buyer", "member", "orders"], admin: ["admin", "tickets", "orders", "price"] };
-        function setRole(r) { R = r; go(TABS[r][0]) }
+        const TAB_ICONS = { farmer: "🌾", buyer: "🛒", member: "⭐", orders: "📦", admin: "🛡️", tickets: "🎫", price: "📈", settings: "⚙️", register: "📝" };
+        function setRole(r) {
+            R = r;
+            document.body.dataset.role = r;
+            if ($("#role")) $("#role").value = r;
+            document.querySelectorAll(".role-btn").forEach(b => b.classList.toggle("active", b.getAttribute("data-role") === r));
+            go(TABS[r][0]);
+        }
         async function go(x) {
-            tab = x; $("#nav").innerHTML = TABS[R].map(k => `<button class="${k == x ? "on" : ""}" onclick="go('${k}')">${t(k)}</button>`).join(""); $("#app").innerHTML = "Loading…";
+            tab = x;
+            document.body.dataset.role = R;
+            document.querySelectorAll(".role-btn").forEach(b => b.classList.toggle("active", b.getAttribute("data-role") === R));
+            $("#nav").innerHTML = TABS[R].map(k => `<button class="${k == x ? "on" : ""}" onclick="go('${k}')"><span style="font-size:15px">${TAB_ICONS[k] || "•"}</span> ${t(k)}</button>`).join("");
+            $("#app").innerHTML = `<div class="loading-box"><div class="spinner"></div><span>Loading…</span></div>`;
             try { $("#app").innerHTML = await V[x](); after[x] && after[x]() } catch (e) { $("#app").innerHTML = `<div class="card">Error: ${e.message}</div>` }
         }
         (async () => {
@@ -698,13 +1331,38 @@ ${earlyNote(l)}<div class="mu">${Math.min(sb.min_order, l.qty)} kg = <b>${fm(l.p
                 if (fut && l.subscriber_rate) return `<div class="mu" style="color:var(--pr);font-weight:600">⚡ Plus early access. Opens to others on ${w}</div>`; return ""
             }
             window.earlyNote = earlyNote;
+            const CROP_ICONS = { Tomato: "🍅", Potato: "🥔", Onion: "🧅", Pomegranate: "🍎", Avocado: "🥑", "Dragon fruit": "🐉", Banana: "🍌", Mango: "🥭", Papaya: "🍈", Grapes: "🍇", Strawberry: "🍓", Guava: "🍏", Capsicum: "🫑", Broccoli: "🥦", Zucchini: "🥒", Cabbage: "🥬", Cauliflower: "🥦", Carrot: "🥕", Beetroot: "🍠", Lettuce: "🥗" };
+            window.BSORT = window.BSORT || "newest";
             V.buyer = async () => {
                 const B = U.filter(u => u.role == "buyer"); if (!B.length) return noSeed();
                 const sb = await api(`/subscription/${bid}`), ls = await api(`/listings?view=buyer&buyer_id=${bid}&crop=${encodeURIComponent(fc)}&loc=${encodeURIComponent(fl)}`), locs = [...new Set(U.filter(u => u.role == "farmer").map(u => u.loc))];
+                
+                // Explicitly sort latest listings on top
+                let sortedLs = [...ls];
+                if (window.BSORT === "newest") {
+                    sortedLs.sort((a, b) => {
+                        const timeA = a.live_at ? new Date(a.live_at).getTime() : 0;
+                        const timeB = b.live_at ? new Date(b.live_at).getTime() : 0;
+                        if (timeB !== timeA) return timeB - timeA;
+                        return (b.id || 0) - (a.id || 0);
+                    });
+                } else if (window.BSORT === "price_asc") {
+                    sortedLs.sort((a, b) => a.price - b.price);
+                } else if (window.BSORT === "price_desc") {
+                    sortedLs.sort((a, b) => b.price - a.price);
+                } else if (window.BSORT === "qty_desc") {
+                    sortedLs.sort((a, b) => b.qty - a.qty);
+                } else if (window.BSORT === "trust_desc") {
+                    sortedLs.sort((a, b) => ((b.farmer_reliability || {}).lower || 0) - ((a.farmer_reliability || {}).lower || 0));
+                }
+
                 const top = sb.active ? (typeof memStrip == "function" ? memStrip(sb) : `<div class="mu">✔ Plus member until ${sb.ends}</div>`) : `<div class="card" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><div style="flex:1;min-width:220px"><b>Free plan</b><div class="mu">Plus members pay a lower service margin on every listing and see new listings first.</div></div><button class="b" onclick="go('member')">See Plus</button></div>`;
-                return top + `<div class="card"><div class="row"><div><label>Buying as</label><select onchange="bid=+this.value;go('buyer')">${B.map(b => `<option value="${b.id}" ${b.id == bid ? "selected" : ""}>${b.name}</option>`).join("")}</select></div><div><label>Crop</label><select onchange="fc=this.value;go('buyer')"><option value="">All crops</option>${opt(M.crops, fc)}</select></div><div><label>Location</label><select onchange="fl=this.value;go('buyer')"><option value="">All locations</option>${opt(locs, fl)}</select></div><div><label>Grade</label><select onchange="FG=this.value;go('buyer')"><option value="">All grades</option>${["A", "B", "C"].map(g => `<option ${g == FG ? "selected" : ""}>${g}</option>`).join("")}</select></div></div></div><div class="grid">${ls.filter(l => !FG || l.grade === FG).map(l => {
+                const filtered = sortedLs.filter(l => !FG || l.grade === FG);
+
+                return top + `<div class="card"><div class="row"><div><label>Buying as</label><select onchange="bid=+this.value;go('buyer')">${B.map(b => `<option value="${b.id}" ${b.id == bid ? "selected" : ""}>${b.name}</option>`).join("")}</select></div><div><label>Crop</label><select onchange="fc=this.value;go('buyer')"><option value="">All crops</option>${opt(M.crops, fc)}</select></div><div><label>Location</label><select onchange="fl=this.value;go('buyer')"><option value="">All locations</option>${opt(locs, fl)}</select></div><div><label>Grade</label><select onchange="FG=this.value;go('buyer')"><option value="">All grades</option>${["A", "B", "C"].map(g => `<option ${g == FG ? "selected" : ""}>${g}</option>`).join("")}</select></div><div><label>Sort listings</label><select onchange="window.BSORT=this.value;go('buyer')"><option value="newest" ${(window.BSORT||"newest")=="newest"?"selected":""}>⚡ Latest listings first</option><option value="price_asc" ${window.BSORT=="price_asc"?"selected":""}>💵 Price: Low to High</option><option value="price_desc" ${window.BSORT=="price_desc"?"selected":""}>💎 Price: High to Low</option><option value="qty_desc" ${window.BSORT=="qty_desc"?"selected":""}>📦 Quantity: Large lots</option><option value="trust_desc" ${window.BSORT=="trust_desc"?"selected":""}>⭐ Farmer trust: Highest</option></select></div></div></div><div style="display:flex;justify-content:space-between;align-items:center;margin:18px 0 10px"><h2 style="margin:0">Available farm lots (${filtered.length})</h2><span class="mu" style="font-weight:600">⚡ Latest listings appear on top</span></div><div class="grid">${filtered.map((l, i) => {
                     const r = l.farmer_reliability, mn = l.qty; LST[l.id] = l;
-                    return `<div class="card"><h3>${l.crop}${l.variety ? " · " + l.variety : ""}${l.grade ? ` <span class="tag">Grade ${l.grade}</span>` : ""} <span class="tag">${l.loc}</span></h3><div class="mu">${l.farmer_name} · trust ${r.lower} (${r.n} deals)<br>${l.qty} kg available</div><div class="big">${fk(l.price)}/kg</div>${l.subscriber_rate ? '<span class="tag">Plus price</span>' : ""}<div class="mu">${prem(l)}</div><div style="font-size:18px;font-weight:800;margin:8px 0">Whole lot: ${l.qty} kg = ${fm(l.price * l.qty)}</div>${earlyNote(l)}` + (l.locked_for_you ? "" : `<div class="mu">You buy the whole lot.</div><label>Deposit into escrow</label><select id="dp${l.id}"><option value="0.3">30%</option><option value="0.5">50%</option><option value="1">100%</option></select><button class="b" onclick="order(${l.id})">Order &amp; pay deposit (demo)</button>`) + `</div>`
+                    const isNew = (l.live_at && (Date.now() - new Date(l.live_at).getTime() < 48 * 36e5)) || i < 2;
+                    return `<div class="card" style="display:flex;flex-direction:column;justify-content:space-between"><div><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px"><h3>${CROP_ICONS[l.crop] || "🌾"} ${l.crop}${l.variety ? " · " + l.variety : ""}</h3>${isNew ? '<span class="tag tag-new">⚡ JUST IN</span>' : ""}</div><div style="display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 10px">${l.grade ? `<span class="tag" style="${l.grade=='A'?'background:#dcfce7;color:#15803d;border:1px solid #86efac':l.grade=='B'?'background:#fef3c7;color:#b45309;border:1px solid #fde68a':'background:#f1f5f9;color:#475569'}">Grade ${l.grade}</span>` : ""}<span class="tag">📍 ${l.loc}</span>${l.subscriber_rate ? '<span class="tag" style="background:#e0f2fe;color:#0284c7">Plus price</span>' : ""}</div><div class="mu" style="margin-bottom:10px"><b>${l.farmer_name}</b> · <span class="tag" style="padding:2px 8px;font-size:11px">⭐ trust ${r.lower}</span> · ${r.n} deals<br><span style="color:var(--tx);font-weight:600">${l.qty.toLocaleString()} kg available</span></div><div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px"><div class="big">${fk(l.price)}/kg</div><div class="mu">${prem(l)}</div></div><div style="background:var(--bd-subtle);border:1px solid var(--bd);border-radius:12px;padding:10px 14px;font-size:14px;font-weight:700;margin:8px 0">Whole lot: ${l.qty.toLocaleString()} kg = ${fm(l.price * l.qty)}</div><div style="font-size:12px;color:var(--pr);font-weight:600;margin:6px 0">🛡️ 100% Escrow protected · Free cancel 15m</div>${earlyNote(l)}</div>` + (l.locked_for_you ? "" : `<div style="margin-top:10px"><div class="mu" style="display:none">You buy the whole lot.</div><label>Deposit into escrow</label><select id="dp${l.id}"><option value="0.3">30% Deposit (Escrow Protected)</option><option value="0.5">50% Deposit</option><option value="1">100% Full Payment</option></select><button class="b" style="width:100%;margin-top:10px" onclick="order(${l.id})">🛒 Order &amp; pay deposit (demo)</button></div>`) + `</div>`
                 }).join("") || '<p class="mu">No listings match.</p>'}</div>`
             };
             window.bmWarn = function (id) {
@@ -750,98 +1408,256 @@ const _c=window.confirm,_a=window.alert,T=s=>(L==="kn"&&R==="buyer")?tp(String(s
 window.confirm=m=>_c.call(window,T(m));window.alert=m=>_a.call(window,T(m));
 const tb=document.getElementById("toast");if(tb)new MutationObserver(()=>{if(L!=="kn"||R!=="buyer")return;const o=tb.textContent,n=tp(o);if(n!==o)tb.textContent=n}).observe(tb,{childList:true,characterData:true,subtree:true});
 })();
-</script><script>/*KB-ADMIN*/
-(function () {
-    const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-    const FS = { PLACED: "Placed · awaiting deposit", FUNDED: "Deposit in escrow", HARVESTED: "Harvested", SHIPPED: "Shipped", DELIVERED: "Delivered · awaiting release", RELEASED: "Paid out", DISPUTED: "Disputed · needs you", REFUNDED: "Refunded", CANCELLED: "Cancelled" };
-    const SC = { DISPUTED: "background:#fee2e2;color:#b91c1c", DELIVERED: "background:#fef3c7;color:#92400e", RELEASED: "background:#dcfce7;color:#166534" };
-    const stTag = s => `<span class="tag" style="${SC[s] || ""}">${esc(FS[s] || s)}</span>`;
-    const paid = o => +(o.buyer_amount || o.amount) || 0;
-    const live = o => !["CANCELLED", "REFUNDED"].includes(o.state);
-    const ts = o => { const x = new Date(o.created).getTime(); return isNaN(x) ? 0 : x };
-    const when = s => { const d = new Date(s); return isNaN(d) ? "" : d.toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }) };
-    const ago = s => { const d = new Date(s); if (isNaN(d)) return ""; const m = Math.max(0, Math.round((Date.now() - d) / 6e4)); return (m < 1 ? "just now" : m < 60 ? m + " min ago" : m < 1440 ? Math.floor(m / 60) + " h ago" : Math.floor(m / 1440) + " d ago") + " (" + d.toLocaleDateString("en-IN", { day: "numeric", month: "short" }) + ")" };
-    const midnight = n => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - n); return d.getTime() };
-    const byId = (a, b) => b.id - a.id;
-    let ADM_U = [], DW = 30;
-
-    function groups(os) {
-        const t0 = midnight(0), y0 = midnight(1), w0 = midnight(7);
-        const G = [{ k: "Today", s: "", r: [] }, { k: "Yesterday", s: "", r: [] }, { k: "Last 7 days", s: "before yesterday", r: [] }, { k: "Older", s: "", r: [] }];
-        [...os].sort((a, b) => ts(b) - ts(a) || b.id - a.id).forEach(o => { const x = ts(o); G[x >= t0 ? 0 : x >= y0 ? 1 : x >= w0 ? 2 : 3].r.push(o) });
-        return G
-    }
-    function demand(os, days, lv) {
-        const cut = days ? Date.now() - days * 864e5 : 0, m = {};
-        os.filter(o => live(o) && (!days || ts(o) >= cut)).forEach(o => { const c = m[o.crop] || (m[o.crop] = { crop: o.crop, n: 0, kg: 0, val: 0, stock: 0 }); c.n++; c.kg += +o.qty || 0; c.val += paid(o) });
-        lv.forEach(l => { if (m[l.crop]) m[l.crop].stock += +l.qty || 0 });
-        return Object.values(m).sort((a, b) => b.kg - a.kg || b.n - a.n)
-    }
-    function admCard(o) {
-        let h = ordCard(o);
-        h = h.replace(String(o.buyer) + " → " + String(o.farmer) + "</div>", () => esc(o.buyer) + " → " + esc(o.farmer) + "<br>Placed " + when(o.created) + "</div>");
-        h = h.replace('<span class="tag">' + o.state + "</span>", () => stTag(o.state));
-        h = h.replace("<b>" + fm(o.amount) + "</b>", () => "<b>" + fm(paid(o)) + '</b> <span class="mu">buyer paid</span><div class="mu">Farmer value ' + fm(o.amount) + "</div>");
-        return h
-    }
-
-    window.setDW = n => { DW = n; go("admin") };
-    window.userRows = function () {
-        const q = ($("#us") ? $("#us").value : "").trim().toLowerCase(), qd = q.replace(/\D/g, ""), rf = $("#ur") ? $("#ur").value : "", today = new Date().toLocaleDateString("en-CA");
-        const rows = ADM_U.filter(u => (!rf || u.role == rf) && (!q || [u.name, u.loc, u.buyer_type, u.role, u.phone].join(" ").toLowerCase().includes(q) || (qd.length >= 3 && (u.phones || []).some(p => String(p).replace(/\D/g, "").includes(qd)))));
-        $("#ub").innerHTML = rows.map(u => {
-            const also = (u.phones || []).filter(p => p && p !== u.phone);
-            const plan = u.role == "buyer" ? (u.plus_until && u.plus_until >= today ? "Plus until " + esc(u.plus_until) : "Free") : "";
-            return `<tr><td><b>${esc(u.name)}</b></td><td>${u.role == "farmer" ? "Farmer" : "Buyer"}</td><td>${esc(u.phone || "–")}${also.length ? `<div class="mu">also ${esc(also.join(", "))}</div>` : ""}</td><td>${esc(u.buyer_type || (u.role == "farmer" ? "–" : ""))}${plan ? `<div class="mu">${plan}</div>` : ""}</td><td>${esc(u.loc || "–")}</td></tr>`
-        }).join("") || '<tr><td colspan="5" class="mu">No user matches your search.</td></tr>';
-        $("#uc").textContent = "· showing " + rows.length + " of " + ADM_U.length
-    };
-    after.admin = () => window.userRows();
-
-    V.admin = async () => {
-        const [s, os, tk, lv, us] = await Promise.all([api("/admin/summary"), api("/orders?view=admin"), api("/tickets?view=admin"), api("/listings?view=admin"), api("/users")]);
-        U = us; ADM_U = us.filter(u => u.role != "admin");
-        const wait = tk.filter(x => ["OPEN", "SCHEDULED"].includes(x.status)), fresh = tk.filter(x => x.status == "OPEN").length, disp = os.filter(o => o.state == "DISPUTED").length;
-        const t0 = midnight(0), today = os.filter(o => ts(o) >= t0), stock = lv.reduce((a, l) => a + (+l.qty || 0), 0);
-        const card = (lbl, val, hint, to, warn) => `<div class="card"${to ? ` onclick="go('${to}')" style="cursor:pointer${warn ? ";border:2px solid #dc2626" : ""}"` : ""}><div class="mu">${lbl}</div><div class="big">${val}</div><div class="mu">${hint}</div></div>`;
-        const earn = (+s.platform_fee || 0) + (+s.buyer_margin || 0) + (+s.subscription_revenue || 0);
-        const dm = demand(os, DW || 0, lv), top = dm.length ? dm[0].kg : 1;
-        const dbtn = (n, l) => `<button class="b s" style="${DW === n ? "outline:2px solid var(--pr)" : ""}" onclick="setDW(${n})">${l}</button>`;
-        const recent = [...os].sort((a, b) => ts(b) - ts(a) || b.id - a.id).slice(0, 5);
-        return `<h2>Needs your attention</h2><div class="stats">${card("Tickets waiting", wait.length, fresh + " not yet scheduled", "tickets")}${card("Disputed orders", disp, disp ? "Open Orders to resolve them" : "None, all clear", "orders", disp > 0)}${card("Orders today", today.length, fm(today.filter(live).reduce((a, o) => a + paid(o), 0)) + " from buyers", "orders")}${card("Live listings", lv.length, stock.toLocaleString("en-IN") + " kg in stock", "tickets")}</div>
-<h2 style="margin-top:16px">Money <span class="mu" style="font-weight:400">· counted on paid-out (released) orders</span></h2><div class="stats">${card("Sales completed", fm(s.gmv_released), "Farmer value of released orders")}${card("Farmer commission", fm(s.platform_fee), "Taken from farmers on delivery")}${card("Buyer markup", fm(s.buyer_margin), "Added to buyer prices, kept by platform")}${card("Plus subscriptions", fm(s.subscription_revenue), "Memberships sold")}<div class="card" style="border:2px solid var(--pr)"><div class="mu">Total platform earnings</div><div class="big">${fm(earn)}</div><div class="mu">Commission + markup + subscriptions</div></div>${card("Farmer price vs mandi forecast", s.avg_farmer_premium_pct == null ? "–" : (s.avg_farmer_premium_pct > 0 ? "+" : "") + s.avg_farmer_premium_pct + "%", "Average over paid-out orders")}</div>
-<div class="card tw" style="margin-top:16px"><h2>🔥 High-demand crops</h2><div style="margin-bottom:8px">${dbtn(7, "Last 7 days")} ${dbtn(30, "Last 30 days")} ${dbtn(0, "All time")}</div><table><tr><th>#</th><th>Crop</th><th>Orders</th><th>Kg ordered</th><th>Order value</th><th>In stock now</th><th>Signal</th></tr>${dm.map((d, i) => `<tr><td>${i + 1}</td><td><b>${esc(d.crop)}</b><div style="background:var(--pr);height:6px;border-radius:3px;margin-top:4px;width:${Math.max(4, Math.round(100 * d.kg / top))}%"></div></td><td>${d.n}</td><td>${d.kg.toLocaleString("en-IN")}</td><td>${fm(d.val)}</td><td>${d.stock.toLocaleString("en-IN")} kg</td><td>${i < 3 && d.n >= 2 ? "🔥 High demand" : ""}${d.stock <= 0 ? (i < 3 && d.n >= 2 ? " · " : "") + "<b style=\"color:#b91c1c\">No stock, list more</b>" : ""}</td></tr>`).join("") || '<tr><td colspan="7" class="mu">No orders in this period.</td></tr>'}</table><p class="mu">Ranked by kg ordered. Cancelled and refunded orders are not counted.</p></div>
-<div class="card tw"><h2>Latest orders</h2><table><tr><th>#</th><th>When</th><th>Crop</th><th>Buyer → Farmer</th><th>Kg</th><th>Buyer paid</th><th>Status</th></tr>${recent.map(o => `<tr><td>${o.id}</td><td>${esc(when(o.created))}</td><td>${esc(o.crop)}</td><td>${esc(o.buyer)} → ${esc(o.farmer)}</td><td>${o.qty}</td><td>${fm(paid(o))}</td><td>${stTag(o.state)}</td></tr>`).join("") || '<tr><td colspan="7" class="mu">No orders yet.</td></tr>'}</table><button class="b s" onclick="go('orders')">See all orders by day</button></div>
-<div class="card tw"><h2>Users <span id="uc" class="mu" style="font-weight:400"></span></h2><div class="row"><div style="flex:2;min-width:220px"><label>Search by name, phone, location or type</label><input id="us" type="search" autocomplete="off" placeholder="e.g. Ramesh, 93800 or Kolar" oninput="userRows()"></div><div><label>Show</label><select id="ur" onchange="userRows()"><option value="">Everyone</option><option value="farmer">Farmers</option><option value="buyer">Buyers</option></select></div></div><table style="margin-top:8px"><tr><th>Name</th><th>Role</th><th>Phone</th><th>Type / plan</th><th>Location</th></tr><tbody id="ub"></tbody></table></div>
-<div class="card"><button class="b" onclick="ver()">Verify ledger integrity</button> <span id="vr" class="mu">Ledger intact: ${s.ledger_intact ? "yes" : "NO"}</span></div>`
-    };
-
-    const _vo = V.orders;
-    V.orders = async () => {
-        if (R !== "admin") return _vo();
-        const os = await api("/orders?view=admin");
-        return `<h2>All orders <span class="mu" style="font-weight:400">· ${os.length} in total, newest first</span></h2>` + groups(os).filter(g => g.k != "Older" || g.r.length).map(g => {
-            const n = g.r.length, val = g.r.filter(live).reduce((a, o) => a + paid(o), 0), dis = g.r.filter(o => o.state == "DISPUTED").length;
-            return `<h2 style="margin-top:16px">${g.k}${g.s ? ` <span class="mu" style="font-weight:400">(${g.s})</span>` : ""} <span class="mu" style="font-weight:400">· ${n} order${n == 1 ? "" : "s"}${val > 0 ? " · " + fm(val) : ""}${dis ? ` · <b style="color:#b91c1c">${dis} disputed</b>` : ""}</span></h2>` + (g.r.map(admCard).join("") || `<p class="mu">No orders ${g.k == "Today" ? "today" : g.k == "Yesterday" ? "yesterday" : "in this period"}.</p>`)
-        }).join("")
-    };
-
-    const _at = adminTk;
-    adminTk = function (t) {
-        const h = _at(t), w = t.created ? ago(t.created) : "", k = '<span class="tag">' + t.status + "</span>";
-        return w && h.includes(k) ? h.replace(k, () => k + '<div class="mu">Raised ' + w + "</div>") : h
-    };
-    liveCard = function (l) {
-        const isNew = l.live_at && Date.now() - new Date(l.live_at).getTime() < 48 * 36e5, mk = l.buyer_markup == null ? "default markup" : "markup " + Math.round(l.buyer_markup * 1000) / 10 + "%", eh = +l.early_hours > 0 ? " · Plus early access " + l.early_hours + " h" : "";
-        return `<div class="card"><div class="row" style="align-items:center"><div><h3>#${l.id} · ${esc(l.crop)}${l.variety ? " · " + esc(l.variety) : ""}${l.grade ? " · Grade " + esc(l.grade) : ""}${isNew ? ' <span class="tag" style="background:#dcfce7;color:#166534">NEW</span>' : ""}</h3><div class="mu">${esc(l.farmer_name || "")} · ${l.qty} kg left · farmer price ${fk(l.price)}/kg<br>${l.live_at ? "Listed " + ago(l.live_at) + " · " : ""}${mk}${eh}</div></div><div><button class="b s" onclick="unpub(${l.id})">Undo publish</button></div></div></div>`
-    };
-    V.tickets = async () => {
-        const [tk, lv, os] = await Promise.all([api("/tickets?view=admin"), api("/listings?view=admin"), api("/orders?view=admin").catch(() => [])]);
-        MR = {}; TK = {}; await Promise.all([...new Set(tk.map(t => t.crop))].map(async c => { try { MR[c] = await api("/mandi/" + encodeURIComponent(c)) } catch (e) { MR[c] = { latest: null } } }));
-        const op = tk.filter(t => ["OPEN", "SCHEDULED"].includes(t.status)).sort(byId), dn = tk.filter(t => !["OPEN", "SCHEDULED"].includes(t.status)).sort(byId), lvs = [...lv].sort(byId), hot = demand(os, 30, lv).slice(0, 4);
-        return (hot.length ? `<div class="card"><b>🔥 In demand (last 30 days):</b> ${hot.map(d => `${esc(d.crop)} <span class="mu">(${d.n} order${d.n == 1 ? "" : "s"}, ${d.kg.toLocaleString("en-IN")} kg)</span>`).join(" · ")}</div>` : "") + `<h2>Open tickets (${op.length}) <span class="mu" style="font-weight:400">· newest first</span></h2>${op.map(adminTk).join("") || '<p class="mu">No open tickets.</p>'}<h2 style="margin-top:14px">Live listings (${lvs.length}) <span class="mu" style="font-weight:400">· newest first</span></h2>${lvs.map(liveCard).join("") || '<p class="mu">No live listings.</p>'}<h2 style="margin-top:14px">Closed</h2>${dn.map(tkCard).join("") || "—"}`
-    }
-})();
+</script><script>/*KB-ADMIN*/
+(function () {
+    const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    const FS = { PLACED: "Placed · awaiting deposit", FUNDED: "Deposit in escrow", HARVESTED: "Harvested", SHIPPED: "Shipped", DELIVERED: "Delivered · awaiting release", RELEASED: "Paid out", DISPUTED: "Disputed · needs you", REFUNDED: "Refunded", CANCELLED: "Cancelled" };
+    const SC = { DISPUTED: "background:#fee2e2;color:#b91c1c", DELIVERED: "background:#fef3c7;color:#92400e", RELEASED: "background:#dcfce7;color:#166534" };
+    const stTag = s => `<span class="tag" style="${SC[s] || ""}">${esc(FS[s] || s)}</span>`;
+    const paid = o => +(o.buyer_amount || o.amount) || 0;
+    const live = o => !["CANCELLED", "REFUNDED"].includes(o.state);
+    const ts = o => { const x = new Date(o.created).getTime(); return isNaN(x) ? 0 : x };
+    const when = s => { const d = new Date(s); return isNaN(d) ? "" : d.toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }) };
+    const ago = s => { const d = new Date(s); if (isNaN(d)) return ""; const m = Math.max(0, Math.round((Date.now() - d) / 6e4)); return (m < 1 ? "just now" : m < 60 ? m + " min ago" : m < 1440 ? Math.floor(m / 60) + " h ago" : Math.floor(m / 1440) + " d ago") + " (" + d.toLocaleDateString("en-IN", { day: "numeric", month: "short" }) + ")" };
+    const midnight = n => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - n); return d.getTime() };
+    const byId = (a, b) => b.id - a.id;
+    let ADM_U = [], DW = 30;
+
+    function groups(os) {
+        const t0 = midnight(0), y0 = midnight(1), w0 = midnight(7);
+        const G = [{ k: "Today", s: "", r: [] }, { k: "Yesterday", s: "", r: [] }, { k: "Last 7 days", s: "before yesterday", r: [] }, { k: "Older", s: "", r: [] }];
+        [...os].sort((a, b) => ts(b) - ts(a) || b.id - a.id).forEach(o => { const x = ts(o); G[x >= t0 ? 0 : x >= y0 ? 1 : x >= w0 ? 2 : 3].r.push(o) });
+        return G
+    }
+    function demand(os, days, lv) {
+        const cut = days ? Date.now() - days * 864e5 : 0, m = {};
+        os.filter(o => live(o) && (!days || ts(o) >= cut)).forEach(o => { const c = m[o.crop] || (m[o.crop] = { crop: o.crop, n: 0, kg: 0, val: 0, stock: 0 }); c.n++; c.kg += +o.qty || 0; c.val += paid(o) });
+        lv.forEach(l => { if (m[l.crop]) m[l.crop].stock += +l.qty || 0 });
+        return Object.values(m).sort((a, b) => b.kg - a.kg || b.n - a.n)
+    }
+    function admCard(o) {
+        let h = ordCard(o);
+        h = h.replace(String(o.buyer) + " → " + String(o.farmer) + "</div>", () => esc(o.buyer) + " → " + esc(o.farmer) + "<br>Placed " + when(o.created) + "</div>");
+        h = h.replace('<span class="tag">' + o.state + "</span>", () => stTag(o.state));
+        h = h.replace("<b>" + fm(o.amount) + "</b>", () => "<b>" + fm(paid(o)) + '</b> <span class="mu">buyer paid</span><div class="mu">Farmer value ' + fm(o.amount) + "</div>");
+        return h
+    }
+
+    window.setDW = n => { DW = n; go("admin") };
+    window.userRows = function () {
+        const q = ($("#us") ? $("#us").value : "").trim().toLowerCase(), qd = q.replace(/\D/g, ""), rf = $("#ur") ? $("#ur").value : "", today = new Date().toLocaleDateString("en-CA");
+        const rows = ADM_U.filter(u => (!rf || u.role == rf) && (!q || [u.name, u.loc, u.buyer_type, u.role, u.phone].join(" ").toLowerCase().includes(q) || (qd.length >= 3 && (u.phones || []).some(p => String(p).replace(/\D/g, "").includes(qd)))));
+        $("#ub").innerHTML = rows.map(u => {
+            const also = (u.phones || []).filter(p => p && p !== u.phone);
+            const plan = u.role == "buyer" ? (u.plus_until && u.plus_until >= today ? "Plus until " + esc(u.plus_until) : "Free") : "";
+            return `<tr><td><b>${esc(u.name)}</b></td><td>${u.role == "farmer" ? "Farmer" : "Buyer"}</td><td>${esc(u.phone || "–")}${also.length ? `<div class="mu">also ${esc(also.join(", "))}</div>` : ""}</td><td>${esc(u.buyer_type || (u.role == "farmer" ? "–" : ""))}${plan ? `<div class="mu">${plan}</div>` : ""}</td><td>${esc(u.loc || "–")}</td></tr>`
+        }).join("") || '<tr><td colspan="5" class="mu">No user matches your search.</td></tr>';
+        $("#uc").textContent = "· showing " + rows.length + " of " + ADM_U.length
+    };
+    after.admin = () => window.userRows();
+
+    V.admin = async () => {
+        const [s, os, tk, lv, us] = await Promise.all([api("/admin/summary"), api("/orders?view=admin"), api("/tickets?view=admin"), api("/listings?view=admin"), api("/users")]);
+        U = us; ADM_U = us.filter(u => u.role != "admin");
+        const wait = tk.filter(x => ["OPEN", "SCHEDULED"].includes(x.status)), fresh = tk.filter(x => x.status == "OPEN").length, disp = os.filter(o => o.state == "DISPUTED").length;
+        const t0 = midnight(0), today = os.filter(o => ts(o) >= t0), stock = lv.reduce((a, l) => a + (+l.qty || 0), 0);
+        const card = (icon, lbl, val, hint, to, warn, highlight) => `
+            <div class="card" ${to ? `onclick="go('${to}')" style="cursor:pointer;${warn ? "border:2px solid #ef4444;box-shadow:0 0 16px rgba(239,68,68,0.2);" : ""}${highlight ? "border:2px solid var(--pr);box-shadow:0 0 16px var(--pr-glow);" : ""}"` : (highlight ? 'style="border:2px solid var(--pr);box-shadow:0 0 16px var(--pr-glow);"' : "")}>
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+                    <span class="mu" style="font-weight:700;font-size:12px;letter-spacing:0.02em;text-transform:uppercase">${lbl}</span>
+                    <span style="font-size:18px;background:var(--pr2);width:34px;height:34px;border-radius:10px;display:grid;place-items:center">${icon}</span>
+                </div>
+                <div class="big">${val}</div>
+                <div class="mu" style="font-size:12px;margin-top:4px">${hint}</div>
+            </div>`;
+        const earn = (+s.platform_fee || 0) + (+s.buyer_margin || 0) + (+s.subscription_revenue || 0);
+        const dm = demand(os, DW || 0, lv), top = dm.length ? dm[0].kg : 1;
+        const dbtn = (n, l) => `<button class="b s" style="${DW === n ? "background:var(--pr);color:#fff;font-weight:700;" : ""}" onclick="setDW(${n})">${l}</button>`;
+        const recent = [...os].sort((a, b) => ts(b) - ts(a) || b.id - a.id).slice(0, 5);
+        const medals = ["🥇", "🥈", "🥉"];
+        return `<h2>🛡️ Operations Console · Needs Attention</h2>
+<div class="stats">
+    ${card("📋", "Tickets waiting", wait.length, fresh + " not yet scheduled", "tickets", fresh > 0)}
+    ${card("⚠️", "Disputed orders", disp, disp ? "Requires immediate resolution" : "None · ledger clear", "orders", disp > 0)}
+    ${card("📦", "Orders today", today.length, fm(today.filter(live).reduce((a, o) => a + paid(o), 0)) + " from buyers", "orders")}
+    ${card("🌱", "Live listings", lv.length, stock.toLocaleString("en-IN") + " kg active stock", "tickets")}
+</div>
+
+<h2 style="margin-top:22px">💰 Financial Revenue &amp; Margins <span class="mu" style="font-weight:400">· settled on released orders</span></h2>
+<div class="stats">
+    ${card("💎", "Sales completed", fm(s.gmv_released), "Gross farmer value released")}
+    ${card("🌾", "Farmer commission", fm(s.platform_fee), "Deducted at escrow payout")}
+    ${card("📈", "Buyer markup", fm(s.buyer_margin), "Retained platform margin")}
+    ${card("⭐", "Plus subscriptions", fm(s.subscription_revenue), "Active membership billings")}
+    ${card("🏦", "Total Platform Net", fm(earn), "Commission + markup + subscriptions", null, false, true)}
+    ${card("📊", "Farmer vs mandi", s.avg_farmer_premium_pct == null ? "–" : (s.avg_farmer_premium_pct > 0 ? "+" : "") + s.avg_farmer_premium_pct + "%", "Avg premium over mandi benchmark")}
+</div>
+
+<div class="card tw" style="margin-top:20px">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px">
+        <h2 style="margin:0">🔥 High-Demand Crops</h2>
+        <div>${dbtn(7, "Last 7 days")} ${dbtn(30, "Last 30 days")} ${dbtn(0, "All time")}</div>
+    </div>
+    <table>
+        <tr><th>Rank</th><th>Crop</th><th>Orders</th><th>Kg ordered</th><th>Order value</th><th>In stock now</th><th>Market Signal</th></tr>
+        ${dm.map((d, i) => {
+            let sig = "";
+            if (i < 3 && d.n >= 2) sig += `<span class="tag" style="background:#fef3c7;color:#92400e;border:1px solid #fde68a">🔥 High Demand</span>`;
+            if (d.stock <= 0) sig += `${sig ? ' ' : ''}<span class="tag" style="background:#fee2e2;color:#991b1b;border:1px solid #fecaca">⚠️ Out of Stock</span>`;
+            return `<tr>
+                <td style="font-weight:700;font-size:15px">${medals[i] || "#" + (i + 1)}</td>
+                <td>
+                    <b>${esc(d.crop)}</b>
+                    <div style="background:linear-gradient(90deg, #3b82f6, #06b6d4);height:6px;border-radius:3px;margin-top:4px;width:${Math.max(4, Math.round(100 * d.kg / top))}%"></div>
+                </td>
+                <td><b>${d.n}</b></td>
+                <td>${d.kg.toLocaleString("en-IN")} kg</td>
+                <td>${fm(d.val)}</td>
+                <td>${d.stock.toLocaleString("en-IN")} kg</td>
+                <td>${sig || '<span class="mu" style="font-size:12px">Normal</span>'}</td>
+            </tr>`;
+        }).join("") || '<tr><td colspan="7" class="mu" style="text-align:center;padding:24px">No orders recorded in this period.</td></tr>'}
+    </table>
+    <p class="mu" style="font-size:12px;margin:8px 0 0">Ranked by volume ordered. Cancelled and refunded orders are excluded.</p>
+</div>
+
+<div class="card tw">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px">
+        <h2 style="margin:0">📦 Recent Orders</h2>
+        <button class="b s" style="margin:0" onclick="go('orders')">See all orders by day →</button>
+    </div>
+    <table>
+        <tr><th>Order ID</th><th>Placed</th><th>Crop</th><th>Buyer → Farmer</th><th>Qty</th><th>Buyer Paid</th><th>Status</th></tr>
+        ${recent.map(o => `<tr>
+            <td><code style="font-weight:700">#${o.id}</code></td>
+            <td>${esc(when(o.created))}</td>
+            <td><b>${esc(o.crop)}</b></td>
+            <td>${esc(o.buyer)} → ${esc(o.farmer)}</td>
+            <td>${o.qty} kg</td>
+            <td><b>${fm(paid(o))}</b></td>
+            <td>${stTag(o.state)}</td>
+        </tr>`).join("") || '<tr><td colspan="7" class="mu" style="text-align:center;padding:24px">No orders placed yet.</td></tr>'}
+    </table>
+</div>
+
+<div class="card tw">
+    <h2>👥 User Management <span id="uc" class="mu" style="font-weight:400"></span></h2>
+    <div class="row" style="margin-bottom:12px">
+        <div style="flex:2;min-width:220px">
+            <label>Search by name, phone, location or type</label>
+            <input id="us" type="search" autocomplete="off" placeholder="e.g. Ramesh, 93800 or Kolar" oninput="userRows()">
+        </div>
+        <div>
+            <label>Filter role</label>
+            <select id="ur" onchange="userRows()">
+                <option value="">All Roles</option>
+                <option value="farmer">Farmers only</option>
+                <option value="buyer">Buyers only</option>
+            </select>
+        </div>
+    </div>
+    <table>
+        <tr><th>Name</th><th>Role</th><th>Phone</th><th>Type / Plan</th><th>Location</th></tr>
+        <tbody id="ub"></tbody>
+    </table>
+</div>
+
+<div class="card" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px">
+    <div>
+        <h3 style="margin:0 0 4px">🛡️ Cryptographic Ledger Integrity</h3>
+        <div id="vr" class="mu">${s.ledger_intact ? "✔ All SHA-256 order audit hashes intact &amp; verified" : "⚠️ WARNING: Ledger tampering detected"}</div>
+    </div>
+    <button class="b s" style="margin:0" onclick="ver()">Run Full Integrity Check</button>
+</div>`;
+    };
+
+    const _vo = V.orders;
+    V.orders = async () => {
+        if (R !== "admin") return _vo();
+        const os = await api("/orders?view=admin");
+        return `<h2>All orders <span class="mu" style="font-weight:400">· ${os.length} in total, newest first</span></h2>` + groups(os).filter(g => g.k != "Older" || g.r.length).map(g => {
+            const n = g.r.length, val = g.r.filter(live).reduce((a, o) => a + paid(o), 0), dis = g.r.filter(o => o.state == "DISPUTED").length;
+            return `<h2 style="margin-top:16px">${g.k}${g.s ? ` <span class="mu" style="font-weight:400">(${g.s})</span>` : ""} <span class="mu" style="font-weight:400">· ${n} order${n == 1 ? "" : "s"}${val > 0 ? " · " + fm(val) : ""}${dis ? ` · <b style="color:#b91c1c">${dis} disputed</b>` : ""}</span></h2>` + (g.r.map(admCard).join("") || `<p class="mu">No orders ${g.k == "Today" ? "today" : g.k == "Yesterday" ? "yesterday" : "in this period"}.</p>`)
+        }).join("")
+    };
+
+    const _at = adminTk;
+    adminTk = function (t) {
+        const h = _at(t), w = t.created ? ago(t.created) : "", k = '<span class="tag">' + t.status + "</span>";
+        return w && h.includes(k) ? h.replace(k, () => k + '<div class="mu">Raised ' + w + "</div>") : h
+    };
+    liveCard = function (l) {
+        const isNew = l.live_at && Date.now() - new Date(l.live_at).getTime() < 48 * 36e5, mk = l.buyer_markup == null ? "default markup" : "markup " + Math.round(l.buyer_markup * 1000) / 10 + "%", eh = +l.early_hours > 0 ? " · Plus early access " + l.early_hours + " h" : "";
+        return `<div class="card"><div class="row" style="align-items:center"><div><h3>#${l.id} · ${esc(l.crop)}${l.variety ? " · " + esc(l.variety) : ""}${l.grade ? " · Grade " + esc(l.grade) : ""}${isNew ? ' <span class="tag" style="background:#dcfce7;color:#166534">NEW</span>' : ""}</h3><div class="mu">${esc(l.farmer_name || "")} · ${l.qty} kg left · farmer price ${fk(l.price)}/kg<br>${l.live_at ? "Listed " + ago(l.live_at) + " · " : ""}${mk}${eh}</div></div><div><button class="b s" onclick="unpub(${l.id})">Undo publish</button></div></div></div>`
+    };
+    V.tickets = async () => {
+        const [tk, lv, os] = await Promise.all([api("/tickets?view=admin"), api("/listings?view=admin"), api("/orders?view=admin").catch(() => [])]);
+        MR = {}; TK = {}; await Promise.all([...new Set(tk.map(t => t.crop))].map(async c => { try { MR[c] = await api("/mandi/" + encodeURIComponent(c)) } catch (e) { MR[c] = { latest: null } } }));
+        const op = tk.filter(t => ["OPEN", "SCHEDULED"].includes(t.status)).sort(byId), dn = tk.filter(t => !["OPEN", "SCHEDULED"].includes(t.status)).sort(byId), lvs = [...lv].sort(byId), hot = demand(os, 30, lv).slice(0, 4);
+        return (hot.length ? `<div class="card"><b>🔥 In demand (last 30 days):</b> ${hot.map(d => `${esc(d.crop)} <span class="mu">(${d.n} order${d.n == 1 ? "" : "s"}, ${d.kg.toLocaleString("en-IN")} kg)</span>`).join(" · ")}</div>` : "") + `<h2>Open tickets (${op.length}) <span class="mu" style="font-weight:400">· newest first</span></h2>${op.map(adminTk).join("") || '<p class="mu">No open tickets.</p>'}<h2 style="margin-top:14px">Live listings (${lvs.length}) <span class="mu" style="font-weight:400">· newest first</span></h2>${lvs.map(liveCard).join("") || '<p class="mu">No live listings.</p>'}<h2 style="margin-top:14px">Closed</h2>${dn.map(tkCard).join("") || "—"}`
+    }
+})();
+</script>
+<script id="kb-ui-js">
+(function () {
+const HERO = {
+    farmer: {
+        ic: "🌾",
+        tag: "DIRECT FARM PORTAL",
+        title: "Farmer Workspace",
+        desc: "Direct mandi price intelligence, quality inspection visits, and guaranteed escrow payouts.",
+        actions: [
+            { label: "🎫 Inspection Tickets", to: "tickets" },
+            { label: "📈 Fair Price Guide", to: "price" }
+        ]
+    },
+    buyer: {
+        ic: "🛒",
+        tag: "B2B SPOT MARKETPLACE",
+        title: "Spot Buyer Marketplace",
+        desc: "Grade-verified farm direct produce · Newest listings on top · 100% escrow protection.",
+        actions: [
+            { label: "⭐ Plus Membership", to: "member" },
+            { label: "📦 My Orders", to: "orders" }
+        ]
+    },
+    admin: {
+        ic: "🛡️",
+        tag: "OPERATIONS CONSOLE",
+        title: "Executive Operations Console",
+        desc: "Quality inspection tickets, real-time escrow clearance, and platform dispute resolution.",
+        actions: [
+            { label: "🎫 Review Tickets", to: "tickets" },
+            { label: "📦 View Orders", to: "orders" }
+        ]
+    }
+};
+
+function deco(x) {
+    document.body.dataset.role = R; const a = $("#app");
+    if (!a || a.querySelector(".hero") || !TABS[R] || x !== TABS[R][0]) return;
+    const h = HERO[R] || HERO.farmer, d = new Date().toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" });
+    const acts = (h.actions || []).map(act => `<button class="b s" onclick="go('${act.to}')">${act.label}</button>`).join("");
+    a.insertAdjacentHTML("afterbegin", `
+        <div class="hero">
+            <div class="hero-left">
+                <div class="ic">${h.ic}</div>
+                <div class="hero-text">
+                    <div class="hero-tag"><span class="hero-tag-dot"></span> ${h.tag}</div>
+                    <h1>${h.title}</h1>
+                    <p>${h.desc}</p>
+                </div>
+            </div>
+            <div class="hero-right">
+                <span class="chip">📅 ${d}</span>
+                <div class="hero-actions">${acts}</div>
+            </div>
+        </div>
+    `);
+}
+const _go = go; go = async function (x) { document.body.dataset.role = R; await _go(x); deco(x) };
+document.body.dataset.role = R;
+})();
 </script>
 </body>
 

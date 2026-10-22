@@ -66,7 +66,7 @@ def listings(crop: str = "", loc: str = "", view: str = "farmer", buyer_id: int 
     subbed = _sub(buyer_id)["active"] if view == "buyer" else False
     with conn() as c:
         rows = c.execute("SELECT l.*, u.name farmer_name FROM listings l LEFT JOIN users u ON u.id=l.farmer_id "
-                         "WHERE l.qty>0 AND l.status='ACTIVE' AND (?='' OR l.crop=?) AND (?='' OR l.loc=?)", (crop, crop, loc, loc)).fetchall()
+                         "WHERE l.qty>0 AND l.status='ACTIVE' AND (?='' OR l.crop=?) AND (?='' OR l.loc=?) ORDER BY COALESCE(l.live_at, '') DESC, l.id DESC", (crop, crop, loc, loc)).fetchall()
         approved = None
         if view == "farmer" and farmer_id:  # a farmer sees only listings the admin approved from their tickets
             approved = {r[0] for r in c.execute("SELECT listing_id FROM tickets WHERE status='APPROVED' AND listing_id IS NOT NULL AND farmer_id=?", (farmer_id,))}
