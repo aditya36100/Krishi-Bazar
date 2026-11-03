@@ -6,3 +6,5 @@ data/prices.csv
 data/SYNTHETIC
 
 uploads/
+.env
+data/raw/cache/

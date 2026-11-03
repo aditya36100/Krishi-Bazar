@@ -6,6 +6,26 @@ def conn():
     c.row_factory = sqlite3.Row
     return c
 
+from contextlib import contextmanager
+
+@contextmanager
+def tx():
+    """Write transaction that takes the DB write lock up front (BEGIN IMMEDIATE),
+    so read-check-write sequences cannot interleave across threads/processes."""
+    c = sqlite3.connect(DB, timeout=30, isolation_level=None)
+    c.row_factory = sqlite3.Row
+    try:
+        c.execute("BEGIN IMMEDIATE")
+        yield c
+        c.execute("COMMIT")
+    except BaseException:
+        if c.in_transaction:
+            c.execute("ROLLBACK")
+        raise
+    finally:
+        c.close()
+
+
 def init():
     with conn() as c:
         c.executescript("""

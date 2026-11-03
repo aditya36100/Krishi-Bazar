@@ -1,6 +1,6 @@
 """Escrow state machine + tamper-evident (hash-chained) audit ledger. Demo: no real money moves."""
 import hashlib, json, datetime, os
-from .db import conn
+from .db import conn, tx
 
 FEE = float(os.getenv("KS_FARMER_COMMISSION", "0.05"))  # taken from the farmer on delivered orders
 BUYER_MARKUP = float(os.getenv("KS_BUYER_MARKUP", "0.05"))  # added to the price buyers see
@@ -24,12 +24,12 @@ def _log(c, oid, event, detail):
               (oid, event, d, ts, prev, h))
 
 def start(oid):
-    with conn() as c:
+    with tx() as c:
         o = c.execute("SELECT * FROM orders WHERE id=?", (oid,)).fetchone()
         _log(c, oid, "PLACED", {"amount": o["amount"], "deposit_pct": o["deposit_pct"]})
 
 def move(oid, new, detail=None):
-    with conn() as c:
+    with tx() as c:
         o = c.execute("SELECT * FROM orders WHERE id=?", (oid,)).fetchone()
         if not o:
             raise ValueError("no such order")
@@ -60,7 +60,7 @@ UNDO_MINUTES = 15
 
 def undo(oid):
     """Revert the latest non-money step within a short window. Appends an UNDO event; history is never deleted."""
-    with conn() as c:
+    with tx() as c:
         o = c.execute("SELECT * FROM orders WHERE id=?", (oid,)).fetchone()
         if not o:
             raise ValueError("no such order")
@@ -95,7 +95,7 @@ def cancel_preview(oid):
 
 def buyer_cancel(oid):
     """Buyer undoes an order. Free only while PLACED/FUNDED (farmer has not started) and within CANCEL_MINUTES of ordering."""
-    with conn() as c:
+    with tx() as c:
         o = c.execute("SELECT * FROM orders WHERE id=?", (oid,)).fetchone()
         if not o:
             raise ValueError("no such order")
