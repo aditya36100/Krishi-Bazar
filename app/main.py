@@ -241,7 +241,7 @@ def orders(view: str = "admin"):
 
 
 RATE_CAP = 0.10  # admin-editable rates are fractions (0.03 = 3%), capped here
-SUB_DISCOUNT = 0.005  # subscribers pay this much less markup (0.5 point)
+SUB_DISCOUNT = 0.0  # unused: subscriptions give early access only, no discount
 
 def _load_rates():
     global SUB_DISCOUNT
@@ -266,7 +266,7 @@ _load_rates()
 
 def _markup(l, subbed):
     m = l["buyer_markup"] if l["buyer_markup"] is not None else escrow.BUYER_MARKUP
-    return max(0.0, m - SUB_DISCOUNT) if subbed else m
+    return m  # subscription gives early access only, never a price discount
 
 def _opens_at(l):
     try:
