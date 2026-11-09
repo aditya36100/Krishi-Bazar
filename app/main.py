@@ -3,10 +3,12 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from . import db, escrow, pricing, pricing_rules, reliability, spoilage
+from . import db, escrow, pricing, pricing_rules, reliability, spoilage, cases
 from .db import conn
 
 db.init()
+with conn() as _c:
+    cases.init(_c)
 app = FastAPI(title="Krishi Bazar API")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])  # dev only
 
@@ -64,6 +66,11 @@ def add_listing(l: Listing):  # internal: listings are now created only when the
 @app.get("/listings")
 def listings(crop: str = "", loc: str = "", view: str = "farmer", buyer_id: int = 0, farmer_id: int = 0):
     subbed = _sub(buyer_id)["active"] if view == "buyer" else False
+    buyer_loc = ""
+    if view == "buyer" and buyer_id:
+        with conn() as c:
+            br = c.execute("SELECT loc FROM users WHERE id=?", (buyer_id,)).fetchone()
+            buyer_loc = (br["loc"] if br else "") or ""
     with conn() as c:
         rows = c.execute("SELECT l.*, u.name farmer_name FROM listings l LEFT JOIN users u ON u.id=l.farmer_id "
                          "WHERE l.qty>0 AND l.status='ACTIVE' AND (?='' OR l.crop=?) AND (?='' OR l.loc=?) ORDER BY COALESCE(l.live_at, '') DESC, l.id DESC", (crop, crop, loc, loc)).fetchall()
@@ -77,6 +84,10 @@ def listings(crop: str = "", loc: str = "", view: str = "farmer", buyer_id: int 
         d = dict(r); d["farmer_reliability"] = reliability.score(r["farmer_id"])
         if view == "buyer":
             d["price"] = round(d["price"] * (1 + _markup(r, subbed)), 2); d["early_access_until"] = _opens_at(r).isoformat(timespec="minutes"); d["locked_for_you"] = (not subbed) and _opens_at(r) > datetime.datetime.now(); d["subscriber_rate"] = subbed  # buyers only ever see the marked-up price
+            age_h = spoilage.hours_since(r["harvest_date"]) if r["harvest_date"] else 0
+            sp = spoilage.assess(r["crop"], age_h, r["loc"] or "", buyer_loc)
+            if sp.get("warn"):
+                d["spoilage"] = sp
         out.append(d)
     return out
 
@@ -95,12 +106,24 @@ def place(o: Order):
         mn = min(_buyer_min(o.buyer_id), l["qty"])
         if o.qty < mn:
             raise HTTPException(400, f"Minimum order is {mn:g} kg for your buyer type")
+        buyer = c.execute("SELECT loc FROM users WHERE id=?", (o.buyer_id,)).fetchone()
+        buyer_loc = (buyer["loc"] if buyer else "") or ""
+        age_h = spoilage.hours_since(l["harvest_date"]) if l["harvest_date"] else 0
+        sp = spoilage.assess(l["crop"], age_h, l["loc"] or "", buyer_loc)
+        _q = pricing_rules.quote(
+            l["price"], o.qty, 1.0,
+            farmer_fee_pct=escrow.FEE * 100,
+            buyer_fee_pct=escrow.BUYER_MARKUP * 100,
+        )
         oid = c.execute("INSERT INTO orders(listing_id,buyer_id,qty,amount,buyer_amount,deposit_pct,created) VALUES(?,?,?,?,?,?,?)",
-                        (o.listing_id, o.buyer_id, o.qty, round(o.qty * l["price"], 2), round(o.qty * l["price"] * (1 + _markup(l, subbed)), 2), o.deposit_pct,
+                        (o.listing_id, o.buyer_id, o.qty, _q["farmer_payout"], _q["buyer_pays"], o.deposit_pct,
                          datetime.datetime.now().isoformat())).lastrowid
         c.execute("UPDATE listings SET qty=qty-? WHERE id=?", (o.qty, o.listing_id))
     escrow.start(oid)
-    return {"id": oid, "state": "PLACED"}
+    resp = {"id": oid, "state": "PLACED"}
+    if sp.get("warn"):
+        resp["spoilage"] = sp
+    return resp
 
 @app.post("/orders/{oid}/{action}")
 def act(oid: int, action: str):
@@ -140,6 +163,45 @@ def fault(oid: int, party_id: int):  # admin marks the party at fault after a di
     with conn() as c:
         c.execute("INSERT INTO outcomes(order_id,party_id,kind,ok) VALUES(?,?,?,0)", (oid, party_id, "fault"))
     return {"ok": True}
+
+class DisputeIn(BaseModel):
+    text: str
+
+@app.post("/orders/{oid}/dispute_case")
+def dispute_case(oid: int, d: DisputeIn):
+    """Submit a dispute description to the case memory; may auto-resolve or escalate to admin."""
+    if not d.text.strip():
+        raise HTTPException(400, "dispute text is required")
+    with conn() as c:
+        result = cases.submit(c, d.text.strip())
+    result["order_id"] = oid
+    return result
+
+@app.get("/cases")
+def list_cases():
+    """Admin: list all cases."""
+    with conn() as c:
+        rows = [dict(r) for r in c.execute("SELECT * FROM cases ORDER BY id DESC")]
+    return rows
+
+class ResolveIn(BaseModel):
+    resolution: str; auto_ok: bool = True
+
+@app.post("/cases/{cid}/resolve")
+def resolve_case(cid: int, r: ResolveIn):
+    """Admin: store a resolution so the case can be used for future auto-resolution."""
+    if not r.resolution.strip():
+        raise HTTPException(400, "resolution text is required")
+    with conn() as c:
+        cases.resolve(c, cid, r.resolution.strip(), r.auto_ok)
+    return {"case_id": cid, "resolved": True}
+
+@app.post("/cases/{cid}/wrong")
+def mark_case_wrong(cid: int):
+    """Admin: flag that an auto-resolution was wrong; excludes this case from future matching."""
+    with conn() as c:
+        cases.mark_wrong(c, cid)
+    return {"case_id": cid, "excluded": True}
 
 @app.get("/orders/{oid}/ledger")
 def ledger(oid: int, view: str = "admin"):
@@ -468,7 +530,12 @@ def approve(tid: int, a: Approve):
                   (a.grade, ref[0] if ref else None, r["id"]))
         c.execute("UPDATE tickets SET status='APPROVED', grade=?, final_qty=?, price=?, mandi_ref=?, listing_id=? WHERE id=?",
                   (a.grade, a.qty, a.price, ref[0] if ref else None, r["id"], tid))
-    return {"ticket": tid, "listing": r["id"]}
+    q = pricing_rules.quote(
+        a.price, a.qty, GRADE_FACTOR.get(a.grade, 1.0),
+        farmer_fee_pct=escrow.FEE * 100,
+        buyer_fee_pct=(None if a.buyer_markup == -1.0 else a.buyer_markup * 100) or escrow.BUYER_MARKUP * 100,
+    )
+    return {"ticket": tid, "listing": r["id"], "quote": q}
 
 
 import re, uuid, json

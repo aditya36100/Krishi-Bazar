@@ -2,7 +2,7 @@
 import hashlib, json, datetime, os
 from .db import conn, tx
 
-FEE = float(os.getenv("KS_FARMER_COMMISSION", "0.05"))  # taken from the farmer on delivered orders
+FEE = float(os.getenv("KS_FARMER_COMMISSION", "0.01"))  # 1% taken from farmer; buyer pays 5% markup (BUYER_MARKUP)
 BUYER_MARKUP = float(os.getenv("KS_BUYER_MARKUP", "0.05"))  # added to the price buyers see
 GENESIS = "0" * 64
 ALLOWED = {
