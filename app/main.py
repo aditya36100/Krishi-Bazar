@@ -3,7 +3,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from . import db, escrow, pricing, reliability
+from . import db, escrow, pricing, pricing_rules, reliability, spoilage
 from .db import conn
 
 db.init()
@@ -156,13 +156,20 @@ def verify():
     return {"intact": ok, "first_bad_id": bad}
 
 @app.get("/price/{crop}")
-def price(crop: str, harvest_date: str = ""):
+def price(crop: str, harvest_date: str = "", qty: float = 0, quality: float = 1.0):
     try:
-        return _forecast(crop, harvest_date)
+        f = _forecast(crop, harvest_date)
     except FileNotFoundError:
         raise HTTPException(404, "prices.csv missing - run data/make_demo_csv.py")
     except ValueError as e:
         raise HTTPException(422, str(e))
+    if qty > 0:
+        f["quote"] = pricing_rules.quote(
+            f["point"], qty, quality,
+            farmer_fee_pct=escrow.FEE * 100,
+            buyer_fee_pct=escrow.BUYER_MARKUP * 100,
+        )
+    return f
 
 @app.get("/reliability/{user_id}")
 def rel(user_id: int):
