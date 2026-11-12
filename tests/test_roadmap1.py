@@ -52,3 +52,4 @@ def test_dispute_case_wrong_stops_auto():
     cases.mark_wrong(c, a["matched_case"])
     r3 = cases.submit(c, "tomato was rotten on delivery")
     assert r3["status"] == "ESCALATE"
+
