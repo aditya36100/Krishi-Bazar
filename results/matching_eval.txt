@@ -1,0 +1,3 @@
+﻿trials=300 optimal strictly better in 300 trials
+greedy avg_matches=24.09 avg_cost_per_match=221.0
+optimal avg_matches=25.00 avg_cost_per_match=192.1

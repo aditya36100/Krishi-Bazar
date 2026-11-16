@@ -1,0 +1,7 @@
+﻿images=60 clean images wrongly flagged: 0
+blur (GaussianBlur 4) detected: 60/60
+mild blur (GaussianBlur 1.5) detected: 60/60
+dark detected: 60/60
+bright detected: 60/60
+recompressed copies within 6 bits: 60/60 (max distance 1)
+different images wrongly within 6 bits: 0/1770 (min distance 17)

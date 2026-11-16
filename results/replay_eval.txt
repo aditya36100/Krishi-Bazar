@@ -1,0 +1,2 @@
+﻿edit orders.state directly: trials=100 verify_chain detects 0/100; chain+replay detects 100/100
+edit a ledger row: trials=100 verify_chain detects 100/100; chain+replay detects 100/100

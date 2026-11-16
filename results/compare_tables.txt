@@ -1,0 +1,31 @@
+﻿
+MAPE %
+crop,naive,seasonal,ridge,ets,arima,lgbm_aci
+Tomato,15.3,73.8,14.8,15.6,15.3,17.5
+Onion,9.4,57.9,8.0,9.0,9.3,7.7
+Potato,7.9,30.1,7.9,8.4,8.3,7.2
+Banana,11.0,33.4,12.5,12.9,12.5,11.7
+Carrot,10.5,29.3,10.0,10.1,10.0,7.5
+Mango,24.1,80.9,27.9,24.2,29.6,26.0
+
+Interval coverage % (target 90)
+crop,naive,seasonal,ridge,ets,arima,lgbm_aci
+Tomato,89.7,76.9,92.3,87.2,89.7,94.9
+Onion,92.3,71.8,92.3,94.9,94.9,87.2
+Potato,92.3,84.6,92.3,92.3,92.3,89.7
+Banana,89.7,71.8,89.7,89.7,89.7,87.2
+Carrot,100.0,94.9,100.0,100.0,100.0,97.4
+Mango,84.6,87.2,84.6,84.6,79.5,89.7
+
+Interval width, % of price
+crop,naive,seasonal,ridge,ets,arima,lgbm_aci
+Tomato,75.8,351.9,85.3,88.9,84.4,83.2
+Onion,44.6,189.2,44.1,48.8,47.6,43.9
+Potato,51.9,114.5,45.2,51.4,53.1,59.9
+Banana,53.9,97.4,52.5,51.9,51.2,55.7
+Carrot,55.9,133.2,55.3,57.2,56.7,50.5
+Mango,93.6,448.4,98.9,93.8,101.1,132.2
+
+lgbm_aci has lower MAPE than naive in 3/6 crops: Onion, Potato, Carrot
+
+lgbm_aci has lower MAPE than ridge in 5/6 crops: Onion, Potato, Banana, Carrot, Mango

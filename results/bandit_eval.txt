@@ -1,0 +1,3 @@
+﻿thompson mean_cumulative_regret=22.41
+greedy_mean mean_cumulative_regret=60.72
+random mean_cumulative_regret=93.45
