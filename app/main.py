@@ -1,21 +1,36 @@
 import datetime, math, os
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from . import db, escrow, pricing, pricing_rules, reliability, spoilage, cases
+from . import db, escrow, pricing, pricing_rules, reliability, spoilage, cases, anomaly
 from .db import conn
+from . import idempotency, imagecheck, ratelimit
 
 db.init()
 with conn() as _c:
     cases.init(_c)
+    idempotency.init(_c)
+    imagecheck.init(_c)
 app = FastAPI(title="Krishi Bazar API")
+app.add_middleware(ratelimit.RateLimitMiddleware)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])  # dev only
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CSV = os.getenv("KS_PRICES", os.path.join(BASE, "data", "prices.csv"))
 MARGIN = float(os.getenv("KS_MARGIN", "0.15"))  # direct-sale premium; calibrate from real transactions
 MIN_KG = float(os.getenv("KS_MIN_KG", "100"))  # minimum listing and order size
+
+_anomaly_checker = None
+
+def _get_anomaly_checker():
+    global _anomaly_checker
+    if _anomaly_checker is None:
+        try:
+            _anomaly_checker = anomaly.BaselineChecker(pricing.load(CSV))
+        except Exception:
+            pass
+    return _anomaly_checker
 ACTIONS = {"fund": "FUNDED", "harvest": "HARVESTED", "ship": "SHIPPED", "deliver": "DELIVERED",
            "release": "RELEASED", "dispute": "DISPUTED", "refund": "REFUNDED", "cancel": "CANCELLED"}
 
@@ -92,7 +107,23 @@ def listings(crop: str = "", loc: str = "", view: str = "farmer", buyer_id: int 
     return out
 
 @app.post("/orders")
-def place(o: Order):
+def place(o: Order, idempotency_key: str = Header(default="")):
+    if not isinstance(idempotency_key, str) or not idempotency_key.strip():
+        return _place(o)
+    state, prev = idempotency.reserve(conn, idempotency_key, o.buyer_id)
+    if state == "replay":
+        return prev
+    if state == "busy":
+        raise HTTPException(409, "A request with this Idempotency-Key is still being processed")
+    try:
+        resp = _place(o)
+    except Exception:
+        idempotency.release(conn, idempotency_key, o.buyer_id)
+        raise
+    idempotency.complete(conn, idempotency_key, o.buyer_id, resp)
+    return resp
+
+def _place(o: Order):
     with conn() as c:
         l = c.execute("SELECT * FROM listings WHERE id=?", (o.listing_id,)).fetchone()
         if not l:
@@ -535,7 +566,9 @@ def approve(tid: int, a: Approve):
         farmer_fee_pct=escrow.FEE * 100,
         buyer_fee_pct=(None if a.buyer_markup == -1.0 else a.buyer_markup * 100) or escrow.BUYER_MARKUP * 100,
     )
-    return {"ticket": tid, "listing": r["id"], "quote": q}
+    ac = _get_anomaly_checker()
+    anom = ac.check(t["crop"], a.price) if ac else {"flag": False, "level": "UNKNOWN", "reason": "price data unavailable"}
+    return {"ticket": tid, "listing": r["id"], "quote": q, "anomaly": anom}
 
 
 import re, uuid, json
@@ -587,9 +620,15 @@ async def upload_media(tid: int, request: Request, kind: str, filename: str):
     if too_big or size == 0:
         os.remove(path)
         raise HTTPException(413 if too_big else 400, f"File is too large (max {limit // (1024 * 1024)} MB)" if too_big else "Empty file")
+    flags = None
     with conn() as c:
-        c.execute("INSERT INTO ticket_media(ticket_id,kind,path,filename,size) VALUES(?,?,?,?,?)", (tid, kind, path, filename, size))
-    return {"ok": True}
+        mid = c.execute("INSERT INTO ticket_media(ticket_id,kind,path,filename,size) VALUES(?,?,?,?,?)", (tid, kind, path, filename, size)).lastrowid
+        if kind == "photo":
+            try:
+                flags = imagecheck.analyze_and_store(c, mid, tid, path)
+            except Exception:
+                flags = None  # a failed photo check must never block an upload
+    return {"ok": True} if flags is None else {"ok": True, "photo_flags": flags}
 
 @app.post("/tickets/{tid}/submit")
 def submit_ticket(tid: int):
@@ -647,3 +686,9 @@ def unpublish(lid: int, reason: str = ""):  # admin: take a live listing down; r
             c.execute("UPDATE tickets SET status='OPEN', grade=NULL, final_qty=NULL, price=NULL, mandi_ref=NULL, listing_id=NULL, reason=NULL WHERE id=?", (t["id"],))
             status = "OPEN"
     return {"listing": lid, "status": status}
+
+
+@app.get("/tickets/{tid}/photo_flags")
+def photo_flags(tid: int):  # admin view: quality and duplicate flags for a ticket's photos
+    with conn() as c:
+        return imagecheck.flags_for_ticket(c, tid)

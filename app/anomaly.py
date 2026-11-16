@@ -59,3 +59,33 @@ class PriceChecker:
         return {"flag": flag, "level": "REVIEW" if flag else "OK", "score": round(float(model.decision_function(x)[0]), 4),
                 "recent_median": round(m28, 2),
                 "reason": f"{abs(pct):.0f}% {side} the last 28-day median of Rs {m28:.2f}/kg (history ends at the last data date)"}
+
+
+class BaselineChecker:
+    """Robust z-score price checker (the baseline that outperformed Isolation Forest)."""
+    def __init__(self, df):
+        self.df, self.cache = df, {}
+
+    def _params(self, crop):
+        if crop not in self.cache:
+            y = daily(self.df, crop).values
+            if len(y) <= MIN_HIST + 50:
+                self.cache[crop] = None
+            else:
+                X = train_matrix(y)
+                self.cache[crop] = (y, fit_baseline(X))
+        return self.cache[crop]
+
+    def check(self, crop, price):
+        m = self._params(crop)
+        if m is None or price <= 0:
+            return {"flag": False, "level": "UNKNOWN", "reason": "not enough history to judge"}
+        y, params = m
+        x = np.array([feats(float(price), y)])
+        flag = bool(baseline_flag(x, params)[0])
+        m28 = float(np.median(y[-28:]))
+        pct = (price / m28 - 1) * 100
+        side = "above" if pct > 0 else "below"
+        return {"flag": flag, "level": "REVIEW" if flag else "OK",
+                "recent_median": round(m28, 2),
+                "reason": f"{abs(pct):.0f}% {side} the last 28-day median of Rs {m28:.2f}/kg"}
