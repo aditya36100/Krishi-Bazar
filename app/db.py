@@ -43,7 +43,8 @@ def init():
         except sqlite3.OperationalError:
             pass
         for ddl in ("ALTER TABLE listings ADD COLUMN variety TEXT DEFAULT ''",
-                    "ALTER TABLE orders ADD COLUMN buyer_amount REAL"):
+                    "ALTER TABLE orders ADD COLUMN buyer_amount REAL",
+                    "ALTER TABLE orders ADD COLUMN gross REAL"):
             try:
                 c.execute(ddl)
             except sqlite3.OperationalError:
@@ -80,3 +81,18 @@ def init():
             except sqlite3.OperationalError:
                 pass
         c.execute("CREATE TABLE IF NOT EXISTS ticket_media(id INTEGER PRIMARY KEY, ticket_id INT, kind TEXT, path TEXT, filename TEXT, size INT)")
+        try:
+            c.execute("ALTER TABLE users ADD COLUMN password_hash TEXT DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass
+        _backfill_gross(c)
+
+
+def _backfill_gross(c):
+    """One-time: give every order a gross. amount = farmer net, buyer_amount = what the buyer pays.
+    Legacy rows with no buyer_amount stored the gross in amount: convert them to the new meaning."""
+    fee = float(os.getenv("KS_FARMER_COMMISSION", "0.01"))
+    mk = float(os.getenv("KS_BUYER_MARKUP", "0.05"))
+    c.execute("UPDATE orders SET gross=amount, buyer_amount=ROUND(amount*(1+?),2), amount=ROUND(amount*(1-?),2) "
+              "WHERE gross IS NULL AND buyer_amount IS NULL", (mk, fee))
+    c.execute("UPDATE orders SET gross=ROUND(amount/(1-?),2) WHERE gross IS NULL AND buyer_amount IS NOT NULL", (fee,))

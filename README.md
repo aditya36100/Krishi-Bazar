@@ -101,3 +101,19 @@ python -m eval.backtest data/prices.csv Tomato Onion
 - Payments and subscriptions are demo only. Subscription prices, buyer minimum quantities, grade factors and image-check thresholds are placeholders.
 - It runs locally only. There is no deployment setup yet.
 - Do not commit `.env`, `krishi.db`, `uploads/` or `.venv/`. They are already listed in `.gitignore`.
+
+
+## Login and roles
+The API now needs a login. Farmers and buyers register with a 10-digit mobile number and a password (8 or more characters) and log in with the same number. Passwords are stored as scrypt hashes. Sessions are signed tokens that last 12 hours (`KS_TOKEN_HOURS`).
+
+Put these in `.env` (it is git-ignored; never commit it or paste it anywhere):
+
+    KS_SECRET=<a long random string>      # signs session tokens; without it a random one is made at every start
+    KS_ADMIN_USER=admin                   # admin logs in with this in the phone box
+    KS_ADMIN_PASSWORD=<choose a password>  # no password set means there is no admin account
+
+Make a secret with: `python -c "import secrets; print(secrets.token_hex(32))"`
+
+Admin only: `/admin/*`, `/cases*`, fault marking, ticket approve/reject/schedule, unpublish, photo flags, and full ledger detail. Buyers and farmers can only act on their own orders and tickets.
+
+Rate limiting note: the limiter keys on the connecting IP and ignores `X-Forwarded-For`. Behind a reverse proxy every user then shares one address. This is a known limit and is left as is for now.

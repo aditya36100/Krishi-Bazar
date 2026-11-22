@@ -1,13 +1,14 @@
 import datetime, math, os
-from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from . import db, escrow, pricing, pricing_rules, reliability, spoilage, cases, anomaly
-from .db import conn
+from . import db, escrow, pricing, pricing_rules, reliability, spoilage, cases, anomaly, auth
+from .db import conn, tx
 from . import idempotency, imagecheck, ratelimit
 
 db.init()
+auth.ensure_admin()
 with conn() as _c:
     cases.init(_c)
     idempotency.init(_c)
@@ -35,7 +36,7 @@ ACTIONS = {"fund": "FUNDED", "harvest": "HARVESTED", "ship": "SHIPPED", "deliver
            "release": "RELEASED", "dispute": "DISPUTED", "refund": "REFUNDED", "cancel": "CANCELLED"}
 
 class User(BaseModel):
-    name: str; role: str; loc: str = ""; buyer_type: str = ""; phone: str = ""
+    name: str; role: str; loc: str = ""; buyer_type: str = ""; phone: str = ""; password: str = ""
 class Listing(BaseModel):
     farmer_id: int; crop: str; qty: float; price: float; variety: str = ""; harvest_date: str = ""; loc: str = ""
 class Order(BaseModel):
@@ -55,14 +56,38 @@ def add_user(u: User):
         raise HTTPException(400, "name is required")
     if u.role == "buyer" and u.buyer_type not in BUYER_MIN_KG:
         raise HTTPException(400, "Please choose what you will use the crop for: " + ", ".join(BUYER_MIN_KG))
-    ph = ""
-    if u.phone.strip():
-        ph = _phone(u.phone)
-        if not ph:
-            raise HTTPException(400, "Enter a valid 10-digit mobile number")
+    ph = _phone(u.phone) if u.phone.strip() else ""
+    if not ph:
+        raise HTTPException(400, "Enter a valid 10-digit mobile number")
+    if not (8 <= len(u.password) <= 128):
+        raise HTTPException(400, "Password must be 8 to 128 characters")
+    with tx() as c:  # check + insert in one transaction, so a phone number cannot be registered twice
+        if c.execute("SELECT 1 FROM users WHERE phone=?", (ph,)).fetchone():
+            raise HTTPException(409, "This mobile number is already registered. Please log in.")
+        uid = c.execute("INSERT INTO users(name,role,loc,buyer_type,phone,password_hash) VALUES(?,?,?,?,?,?)",
+                        (u.name.strip(), u.role, u.loc.strip(), u.buyer_type, ph, auth.hash_password(u.password))).lastrowid
+    return {"id": uid, "role": u.role, "name": u.name.strip(), "token": auth.make_token(uid, u.role)}
+
+
+class LoginIn(BaseModel):
+    phone: str; password: str
+
+@app.post("/login")
+def login(b: LoginIn):
+    ident = b.phone.strip()
+    ph = _phone(ident) or ident  # the admin logs in with the username from KS_ADMIN_USER
     with conn() as c:
-        return {"id": c.execute("INSERT INTO users(name,role,loc,buyer_type,phone) VALUES(?,?,?,?,?)",
-                                (u.name.strip(), u.role, u.loc.strip(), u.buyer_type, ph)).lastrowid}
+        r = c.execute("SELECT id, name, role, password_hash FROM users WHERE phone=?", (ph,)).fetchone()
+    if not r or not r["password_hash"]:
+        auth.burn_time(b.password)
+        raise HTTPException(401, "Wrong mobile number or password")
+    if not auth.check_password(b.password, r["password_hash"]):
+        raise HTTPException(401, "Wrong mobile number or password")
+    return {"id": r["id"], "role": r["role"], "name": r["name"], "token": auth.make_token(r["id"], r["role"])}
+
+@app.get("/me")
+def me(user=Depends(auth.current_user)):
+    return user
 
 def add_listing(l: Listing):  # internal: listings are now created only when the admin approves a ticket
     if l.qty < MIN_KG:
@@ -79,7 +104,9 @@ def add_listing(l: Listing):  # internal: listings are now created only when the
         return {"id": cur.lastrowid, "mandi_ref": ref}
 
 @app.get("/listings")
-def listings(crop: str = "", loc: str = "", view: str = "farmer", buyer_id: int = 0, farmer_id: int = 0):
+def listings(crop: str = "", loc: str = "", view: str = "farmer", buyer_id: int = 0, farmer_id: int = 0, user=Depends(auth.current_user)):
+    if user["role"] != "admin":  # people only ever get their own view
+        view = user["role"]; buyer_id = user["id"] if view == "buyer" else 0; farmer_id = user["id"] if view == "farmer" else 0
     subbed = _sub(buyer_id)["active"] if view == "buyer" else False
     buyer_loc = ""
     if view == "buyer" and buyer_id:
@@ -107,7 +134,8 @@ def listings(crop: str = "", loc: str = "", view: str = "farmer", buyer_id: int 
     return out
 
 @app.post("/orders")
-def place(o: Order, idempotency_key: str = Header(default="")):
+def place(o: Order, idempotency_key: str = Header(default=""), user=Depends(auth.role("buyer"))):
+    o.buyer_id = user["id"]  # never trust the id in the request body
     if not isinstance(idempotency_key, str) or not idempotency_key.strip():
         return _place(o)
     state, prev = idempotency.reserve(conn, idempotency_key, o.buyer_id)
@@ -124,7 +152,7 @@ def place(o: Order, idempotency_key: str = Header(default="")):
     return resp
 
 def _place(o: Order):
-    with conn() as c:
+    with tx() as c:  # check + insert + stock decrement + PLACED ledger row in ONE transaction
         l = c.execute("SELECT * FROM listings WHERE id=?", (o.listing_id,)).fetchone()
         if not l:
             raise HTTPException(404, "listing not found")
@@ -146,18 +174,34 @@ def _place(o: Order):
             farmer_fee_pct=escrow.FEE * 100,
             buyer_fee_pct=escrow.BUYER_MARKUP * 100,
         )
-        oid = c.execute("INSERT INTO orders(listing_id,buyer_id,qty,amount,buyer_amount,deposit_pct,created) VALUES(?,?,?,?,?,?,?)",
-                        (o.listing_id, o.buyer_id, o.qty, _q["farmer_payout"], _q["buyer_pays"], o.deposit_pct,
+        oid = c.execute("INSERT INTO orders(listing_id,buyer_id,qty,amount,buyer_amount,gross,deposit_pct,created) VALUES(?,?,?,?,?,?,?,?)",
+                        (o.listing_id, o.buyer_id, o.qty, _q["farmer_payout"], _q["buyer_pays"], _q["gross"], o.deposit_pct,
                          datetime.datetime.now().isoformat())).lastrowid
-        c.execute("UPDATE listings SET qty=qty-? WHERE id=?", (o.qty, o.listing_id))
-    escrow.start(oid)
+        if c.execute("UPDATE listings SET qty=qty-? WHERE id=? AND qty>=?", (o.qty, o.listing_id, o.qty)).rowcount == 0:
+            raise HTTPException(409, "This lot is no longer available")
+        escrow._log(c, oid, "PLACED", {"amount": _q["farmer_payout"], "deposit_pct": o.deposit_pct})
     resp = {"id": oid, "state": "PLACED"}
     if sp.get("warn"):
         resp["spoilage"] = sp
     return resp
 
+class DisputeIn(BaseModel):
+    text: str
+
+@app.post("/orders/{oid}/dispute_case", dependencies=[Depends(auth.order_party)])
+def dispute_case(oid: int, d: DisputeIn):
+    """Submit a dispute description to the case memory; may auto-resolve or escalate to admin."""
+    if not d.text.strip():
+        raise HTTPException(400, "dispute text is required")
+    with conn() as c:
+        result = cases.submit(c, d.text.strip())
+    result["order_id"] = oid
+    return result
+
 @app.post("/orders/{oid}/{action}")
-def act(oid: int, action: str):
+def act(oid: int, action: str, user=Depends(auth.current_user)):
+    if action in auth.ORDER_ACTIONS:
+        auth.authorize_order(user, oid, action)
     if action == "undo":
         try:
             escrow.undo(oid)
@@ -169,9 +213,6 @@ def act(oid: int, action: str):
             escrow.buyer_cancel(oid)
         except ValueError as e:
             raise HTTPException(400, str(e))
-        with conn() as c:
-            o = c.execute("SELECT qty, listing_id FROM orders WHERE id=?", (oid,)).fetchone()
-            c.execute("UPDATE listings SET qty=qty+? WHERE id=?", (o["qty"], o["listing_id"]))
         return {"id": oid, "state": "cancelled"}
     if action not in ACTIONS:
         raise HTTPException(404, "unknown action")
@@ -182,33 +223,19 @@ def act(oid: int, action: str):
         raise HTTPException(400, str(e))
     with conn() as c:
         o = c.execute("SELECT o.*, l.farmer_id FROM orders o JOIN listings l ON l.id=o.listing_id WHERE o.id=?", (oid,)).fetchone()
-        if new in ("REFUNDED", "CANCELLED"):
-            c.execute("UPDATE listings SET qty=qty+? WHERE id=?", (o["qty"], o["listing_id"]))
         if new == "RELEASED":
             for pid, kind in ((o["farmer_id"], "farmer_fulfil"), (o["buyer_id"], "buyer_accept")):
                 c.execute("INSERT INTO outcomes(order_id,party_id,kind,ok) VALUES(?,?,?,1)", (oid, pid, kind))
     return {"id": oid, "state": new}
 
-@app.post("/orders/{oid}/fault/{party_id}")
+@app.post("/orders/{oid}/fault/{party_id}", dependencies=[Depends(auth.admin_only)])
 def fault(oid: int, party_id: int):  # admin marks the party at fault after a dispute
     with conn() as c:
         c.execute("INSERT INTO outcomes(order_id,party_id,kind,ok) VALUES(?,?,?,0)", (oid, party_id, "fault"))
     return {"ok": True}
 
-class DisputeIn(BaseModel):
-    text: str
 
-@app.post("/orders/{oid}/dispute_case")
-def dispute_case(oid: int, d: DisputeIn):
-    """Submit a dispute description to the case memory; may auto-resolve or escalate to admin."""
-    if not d.text.strip():
-        raise HTTPException(400, "dispute text is required")
-    with conn() as c:
-        result = cases.submit(c, d.text.strip())
-    result["order_id"] = oid
-    return result
-
-@app.get("/cases")
+@app.get("/cases", dependencies=[Depends(auth.admin_only)])
 def list_cases():
     """Admin: list all cases."""
     with conn() as c:
@@ -218,7 +245,7 @@ def list_cases():
 class ResolveIn(BaseModel):
     resolution: str; auto_ok: bool = True
 
-@app.post("/cases/{cid}/resolve")
+@app.post("/cases/{cid}/resolve", dependencies=[Depends(auth.admin_only)])
 def resolve_case(cid: int, r: ResolveIn):
     """Admin: store a resolution so the case can be used for future auto-resolution."""
     if not r.resolution.strip():
@@ -227,7 +254,7 @@ def resolve_case(cid: int, r: ResolveIn):
         cases.resolve(c, cid, r.resolution.strip(), r.auto_ok)
     return {"case_id": cid, "resolved": True}
 
-@app.post("/cases/{cid}/wrong")
+@app.post("/cases/{cid}/wrong", dependencies=[Depends(auth.admin_only)])
 def mark_case_wrong(cid: int):
     """Admin: flag that an auto-resolution was wrong; excludes this case from future matching."""
     with conn() as c:
@@ -235,10 +262,10 @@ def mark_case_wrong(cid: int):
     return {"case_id": cid, "excluded": True}
 
 @app.get("/orders/{oid}/ledger")
-def ledger(oid: int, view: str = "admin"):
+def ledger(oid: int, view: str = "admin", user=Depends(auth.order_party)):
     with conn() as c:
         rows = [dict(r) for r in c.execute("SELECT * FROM ledger WHERE order_id=? ORDER BY id", (oid,))]
-    if view != "admin":
+    if view != "admin" or user["role"] != "admin":  # only the admin sees ledger detail
         for r in rows:
             r["detail"] = "(admin only)"
     return rows
@@ -264,21 +291,22 @@ def price(crop: str, harvest_date: str = "", qty: float = 0, quality: float = 1.
         )
     return f
 
-@app.get("/reliability/{user_id}")
+@app.get("/reliability/{user_id}", dependencies=[Depends(auth.current_user)])
 def rel(user_id: int):
     return reliability.score(user_id)
 
-@app.get("/admin/summary")
+@app.get("/admin/summary", dependencies=[Depends(auth.admin_only)])
 def summary():
     with conn() as c:
         g = lambda q: c.execute(q).fetchone()[0]
-        gmv = g("SELECT COALESCE(SUM(amount),0) FROM orders WHERE state='RELEASED'")
+        net = g("SELECT COALESCE(SUM(amount),0) FROM orders WHERE state='RELEASED'")  # farmer payouts (already net of fee)
+        gmv = g(f"SELECT COALESCE(SUM(COALESCE(gross, amount/(1-{escrow.FEE}))),0) FROM orders WHERE state='RELEASED'")
         prem = g("SELECT AVG(l.price/l.mandi_ref-1)*100 FROM orders o JOIN listings l ON l.id=o.listing_id "
                  "WHERE o.state='RELEASED' AND l.mandi_ref>0")
         bp = g(f"SELECT COALESCE(SUM(COALESCE(buyer_amount, amount*{1 + escrow.BUYER_MARKUP})),0) FROM orders WHERE state='RELEASED'")
         subs = g("SELECT COALESCE(SUM(price),0) FROM subscriptions")
         out = {"users": g("SELECT COUNT(*) FROM users"), "orders": g("SELECT COUNT(*) FROM orders"),
-               "gmv_released": gmv, "platform_fee": round(gmv * escrow.FEE, 2), "buyer_margin": round(bp - gmv, 2), "subscription_revenue": subs,
+               "gmv_released": round(gmv, 2), "farmer_payouts": round(net, 2), "platform_fee": round(gmv - net, 2), "buyer_margin": round(bp - gmv, 2), "platform_revenue": round(bp - net, 2), "subscription_revenue": subs,
                "avg_farmer_premium_pct": None if prem is None else round(prem, 1)}
     out["ledger_intact"] = escrow.verify_chain()[0]
     return out
@@ -302,10 +330,12 @@ def hist(crop: str, weeks: int = 52):
     return {"dates": [str(i.date()) for i in s.index], "values": [round(float(v), 2) for v in s.values]}
 
 @app.get("/users")
-def users():
+def users(user=Depends(auth.current_user)):
     with conn() as c:
         rows = [dict(r) for r in c.execute("SELECT u.id, u.name, u.role, u.loc, u.buyer_type, u.phone, "
                                            "(SELECT MAX(s.ends) FROM subscriptions s WHERE s.buyer_id=u.id) plus_until FROM users u")]
+        if user["role"] != "admin":  # everyone else sees only themselves
+            rows = [r for r in rows if r["id"] == user["id"]]
         for u in rows:  # never send password hashes or emails to the browser; collect every phone number known for a person
             nums = []
             for r in c.execute("SELECT phone, alt_phone FROM tickets WHERE farmer_id=? ORDER BY id DESC", (u["id"],)):
@@ -319,12 +349,16 @@ def users():
         return rows
 
 @app.get("/orders")
-def orders(view: str = "admin"):
+def orders(view: str = "admin", user=Depends(auth.current_user)):
+    if user["role"] != "admin":
+        view = user["role"]
     with conn() as c:
         rows = [dict(r) for r in c.execute(
             "SELECT o.*, l.crop, l.variety, l.price, l.farmer_id, fu.name farmer, bu.name buyer FROM orders o "
             "JOIN listings l ON l.id=o.listing_id LEFT JOIN users fu ON fu.id=l.farmer_id "
             "LEFT JOIN users bu ON bu.id=o.buyer_id ORDER BY o.id DESC")]
+    if user["role"] != "admin":  # buyers see their own orders, farmers the orders on their own lots
+        rows = [d for d in rows if d["buyer_id" if view == "buyer" else "farmer_id"] == user["id"]]
     for d in rows:
         bp = d.get("buyer_amount") or round(d["amount"] * (1 + escrow.BUYER_MARKUP), 2)
         if view == "buyer":
@@ -332,7 +366,7 @@ def orders(view: str = "admin"):
             if d["state"] in ("PLACED", "FUNDED"):
                 d["cancel_charge"] = escrow.cancel_preview(d["id"])
         elif view == "farmer":
-            d["payout"] = round(d["amount"] * (1 - escrow.FEE), 2); d.pop("buyer_amount", None)
+            d["payout"] = d["amount"]; d.pop("buyer_amount", None)  # amount is already the farmer net
         else:
             d["buyer_amount"] = bp
     return rows
@@ -388,11 +422,11 @@ class RatesIn(BaseModel):
     sub_discount: float = -1.0
     cancel_fee: float = -1.0
 
-@app.get("/admin/settings")
+@app.get("/admin/settings", dependencies=[Depends(auth.admin_only)])
 def admin_rates_get():
     return {"farmer_fee": escrow.FEE, "default_markup": escrow.BUYER_MARKUP, "sub_discount": SUB_DISCOUNT, "cancel_fee": escrow.CANCEL_FEE, "cap": RATE_CAP}
 
-@app.post("/admin/settings")
+@app.post("/admin/settings", dependencies=[Depends(auth.admin_only)])
 def admin_rates_set(s: RatesIn):
     new = {}
     for k, v in (("farmer_fee", s.farmer_fee), ("default_markup", s.default_markup), ("sub_discount", s.sub_discount), ("cancel_fee", s.cancel_fee)):
@@ -419,11 +453,11 @@ def _sub(buyer_id):
         return {"active": True, "plan": r["plan"], "ends": r["ends"]}
     return {"active": False, "plan": None, "ends": r["ends"] if r else None}
 
-@app.get("/subscription/{buyer_id}")
+@app.get("/subscription/{buyer_id}", dependencies=[Depends(auth.self_buyer)])
 def subscription(buyer_id: int):
     return {**_sub(buyer_id), "min_order": _buyer_min(buyer_id), "plans": {k: {"name": v[0], "price": v[1], "days": v[2]} for k, v in PLANS.items()}}
 
-@app.post("/subscribe/{buyer_id}/{plan}")
+@app.post("/subscribe/{buyer_id}/{plan}", dependencies=[Depends(auth.self_buyer)])
 def subscribe(buyer_id: int, plan: str):  # demo payment: no real money moves
     if plan not in PLANS:
         raise HTTPException(404, "unknown plan")
@@ -472,7 +506,8 @@ class Approve(BaseModel):
     grade: str; qty: float; price: float; agreed: bool = False; variety: str = ""
 
 @app.post("/tickets")
-def raise_ticket(t: Ticket):
+def raise_ticket(t: Ticket, user=Depends(auth.role("farmer"))):
+    t.farmer_id = user["id"]  # never trust the id in the request body
     if t.qty < MIN_KG:
         raise HTTPException(400, f"Minimum quantity is {MIN_KG:g} kg")
     if not t.crop.strip():
@@ -502,7 +537,9 @@ def raise_ticket(t: Ticket):
     return {"id": tid, "status": "DRAFT"}
 
 @app.get("/tickets")
-def tickets(view: str = "admin", farmer_id: int = 0):
+def tickets(view: str = "admin", farmer_id: int = 0, user=Depends(auth.role("farmer", "admin"))):
+    if user["role"] != "admin":
+        view, farmer_id = "farmer", user["id"]
     q, args = "SELECT t.*, u.name farmer, u.loc FROM tickets t LEFT JOIN users u ON u.id=t.farmer_id WHERE t.status!='DRAFT'", ()
     if view == "farmer":
         q, args = q + " AND t.farmer_id=?", (farmer_id,)
@@ -523,7 +560,7 @@ def _tk_set(tid, new, **f):
         c.execute(f"UPDATE tickets SET status=?{sets} WHERE id=?", (new, *f.values(), tid))
     return {"id": tid, "status": new}
 
-@app.post("/tickets/{tid}/schedule")
+@app.post("/tickets/{tid}/schedule", dependencies=[Depends(auth.admin_only)])
 def schedule(tid: int, visit_date: str):
     try:
         datetime.date.fromisoformat(visit_date)
@@ -531,15 +568,15 @@ def schedule(tid: int, visit_date: str):
         raise HTTPException(400, "visit_date must be YYYY-MM-DD")
     return _tk_set(tid, "SCHEDULED", visit_date=visit_date)
 
-@app.post("/tickets/{tid}/reject")
+@app.post("/tickets/{tid}/reject", dependencies=[Depends(auth.admin_only)])
 def reject(tid: int, reason: str = ""):
     return _tk_set(tid, "REJECTED", reason=reason.strip())
 
-@app.post("/tickets/{tid}/cancel")
+@app.post("/tickets/{tid}/cancel", dependencies=[Depends(auth.ticket_owner)])
 def cancel_ticket(tid: int):
     return _tk_set(tid, "CANCELLED")
 
-@app.post("/tickets/{tid}/approve")
+@app.post("/tickets/{tid}/approve", dependencies=[Depends(auth.admin_only)])
 def approve(tid: int, a: Approve):
     with conn() as c:
         t = c.execute("SELECT t.*, u.loc FROM tickets t LEFT JOIN users u ON u.id=t.farmer_id WHERE t.id=?", (tid,)).fetchone()
@@ -591,7 +628,7 @@ def varieties():
     except FileNotFoundError:
         return {}
 
-@app.post("/tickets/{tid}/media")
+@app.post("/tickets/{tid}/media", dependencies=[Depends(auth.ticket_owner)])
 async def upload_media(tid: int, request: Request, kind: str, filename: str):
     ext = os.path.splitext(filename)[1].lower()
     if kind not in ("photo", "video") or ext not in (PHOTO_EXT if kind == "photo" else VIDEO_EXT):
@@ -630,7 +667,7 @@ async def upload_media(tid: int, request: Request, kind: str, filename: str):
                 flags = None  # a failed photo check must never block an upload
     return {"ok": True} if flags is None else {"ok": True, "photo_flags": flags}
 
-@app.post("/tickets/{tid}/submit")
+@app.post("/tickets/{tid}/submit", dependencies=[Depends(auth.ticket_owner)])
 def submit_ticket(tid: int):
     with conn() as c:
         t = c.execute("SELECT status FROM tickets WHERE id=?", (tid,)).fetchone()
@@ -641,7 +678,7 @@ def submit_ticket(tid: int):
         c.execute("UPDATE tickets SET status='OPEN' WHERE id=?", (tid,))
     return {"id": tid, "status": "OPEN"}
 
-@app.delete("/tickets/{tid}")
+@app.delete("/tickets/{tid}", dependencies=[Depends(auth.ticket_owner)])
 def discard_draft(tid: int):
     with conn() as c:
         t = c.execute("SELECT status FROM tickets WHERE id=?", (tid,)).fetchone()
@@ -657,7 +694,7 @@ def discard_draft(tid: int):
             pass
     return {"discarded": tid}
 
-@app.get("/media/{mid}")
+@app.get("/media/{mid}", dependencies=[Depends(auth.media_access)])
 def media(mid: int):
     with conn() as c:
         m = c.execute("SELECT * FROM ticket_media WHERE id=?", (mid,)).fetchone()
@@ -666,7 +703,7 @@ def media(mid: int):
     return FileResponse(m["path"])
 
 
-@app.post("/listings/{lid}/unpublish")
+@app.post("/listings/{lid}/unpublish", dependencies=[Depends(auth.admin_only)])
 def unpublish(lid: int, reason: str = ""):  # admin: take a live listing down; reopens its ticket if nothing was sold
     with conn() as c:
         l = c.execute("SELECT id FROM listings WHERE id=? AND status='ACTIVE'", (lid,)).fetchone()
@@ -688,7 +725,7 @@ def unpublish(lid: int, reason: str = ""):  # admin: take a live listing down; r
     return {"listing": lid, "status": status}
 
 
-@app.get("/tickets/{tid}/photo_flags")
+@app.get("/tickets/{tid}/photo_flags", dependencies=[Depends(auth.admin_only)])
 def photo_flags(tid: int):  # admin view: quality and duplicate flags for a ticket's photos
     with conn() as c:
         return imagecheck.flags_for_ticket(c, tid)

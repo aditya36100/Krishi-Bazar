@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.db import conn
 from app import escrow
+from tests.helpers import register, admin
 
 # app.main._load_rates() may override escrow.FEE from the settings table;
 # reset to the canonical defaults so other tests see the correct values.
@@ -17,13 +18,12 @@ client = TestClient(app)
 
 def test_approve_returns_anomaly_field():
     # create farmer
-    u = client.post("/users", json={"name": "Test Farmer", "role": "farmer", "loc": "Bangalore", "phone": "9876543210"})
-    fid = u.json()["id"]
+    fid, fh = register(client, "farmer", "Test Farmer")
     # create ticket
     t = client.post("/tickets", json={
         "farmer_id": fid, "crop": "Tomato", "qty": 200, "location": "Bangalore",
         "phone": "9876543210", "pref_date": _FUTURE, "pref_slot": "Morning (8-11 am)"
-    })
+    }, headers=fh)
     assert t.status_code == 200, t.text
     tid = t.json()["id"]
     # skip media requirement and set to OPEN directly for testing
@@ -32,7 +32,7 @@ def test_approve_returns_anomaly_field():
     # approve
     r = client.post(f"/tickets/{tid}/approve", json={
         "grade": "A", "qty": 200, "price": 30.0, "agreed": True
-    })
+    }, headers=admin(client))
     assert r.status_code == 200, r.text
     body = r.json()
     assert "anomaly" in body, f"missing anomaly key: {list(body.keys())}"

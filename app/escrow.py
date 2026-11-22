@@ -36,11 +36,14 @@ def move(oid, new, detail=None):
         if new not in ALLOWED.get(o["state"], set()):
             raise ValueError(f"{o['state']} -> {new} not allowed")
         c.execute("UPDATE orders SET state=? WHERE id=?", (new, oid))
+        if new in ("REFUNDED", "CANCELLED"):  # stock goes back in the same transaction as the state change
+            c.execute("UPDATE listings SET qty=qty+? WHERE id=?", (o["qty"], o["listing_id"]))
         d = dict(detail or {}, amount=o["amount"])
-        if new == "RELEASED":
-            bp = o["buyer_amount"] or round(o["amount"] * (1 + BUYER_MARKUP), 2)
-            d.update(commission=round(o["amount"] * FEE, 2), farmer_gets=round(o["amount"] * (1 - FEE), 2),
-                     buyer_paid=bp, platform_total=round(bp - o["amount"] * (1 - FEE), 2))
+        if new == "RELEASED":  # amount is already the farmer net: never re-apply FEE here
+            gross = o["gross"] if o["gross"] is not None else round(o["amount"] / (1 - FEE), 2)
+            bp = o["buyer_amount"] or round(gross * (1 + BUYER_MARKUP), 2)
+            d.update(commission=round(gross - o["amount"], 2), farmer_gets=o["amount"],
+                     buyer_paid=bp, platform_total=round(bp - o["amount"], 2))
         _log(c, oid, new, d)
 
 def verify_chain():
@@ -105,6 +108,7 @@ def buyer_cancel(oid):
         age = (datetime.datetime.now(datetime.timezone.utc) - datetime.datetime.fromisoformat(first["ts"])).total_seconds() / 60
         charge = _cancel_charge(o, age)
         new = "CANCELLED" if o["state"] == "PLACED" else "REFUNDED"
+        c.execute("UPDATE listings SET qty=qty+? WHERE id=?", (o["qty"], o["listing_id"]))
         c.execute("UPDATE orders SET state=? WHERE id=?", (new, oid))
         _log(c, oid, new, {"reason": "buyer cancelled" + ("" if age <= CANCEL_MINUTES else " after the free window"), "amount": o["amount"], "cancel_charge": charge})
         return charge

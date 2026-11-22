@@ -979,9 +979,24 @@
                 <option value="en">English</option>
                 <option value="kn">ಕನ್ನಡ</option>
             </select>
-            <button class="b s" style="margin:0" onclick="go('register')">Register</button>
+            <button class="b s" style="margin:0" id="logbtn" onclick="logout()">Log out</button>
         </div>
     </header>
+    <div id="login" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(15,23,42,.6);align-items:center;justify-content:center">
+        <div class="card" style="max-width:380px;width:92%;margin:0">
+            <h2 id="lg-title">Log in</h2><div id="lg-msg" class="mu"></div>
+            <label>Mobile number (admin: username)</label><input id="lg-ph" autocomplete="username">
+            <label>Password</label><input id="lg-pw" type="password" autocomplete="current-password">
+            <div id="lg-reg" style="display:none">
+                <label>I am a</label><select id="lg-role" onchange="lgRole()"><option value="buyer">Buyer</option><option value="farmer">Farmer</option></select>
+                <label>Name / business name</label><input id="lg-name">
+                <label>Location (town or district)</label><input id="lg-loc">
+                <div id="lg-bt"><label>What will you use the crop for?</label><select id="lg-type"><option value="">Choose...</option><option>Restaurant</option><option>Hotel</option><option>Supermarket</option><option>Exporter</option><option>Personal use</option><option>Other</option></select></div>
+            </div>
+            <button class="b" id="lg-go" onclick="lgGo()">Log in</button>
+            <button class="b s" id="lg-sw" onclick="lgSwitch()">New here? Register</button>
+        </div>
+    </div>
     <div id="badge"></div>
     <main id="app"></main>
     <div id="toast"></div>
@@ -994,8 +1009,11 @@
         const t = k => TT[L][k] || TT.en[k], fm = n => "₹" + Math.round(n).toLocaleString("en-IN"), fk = n => "₹" + (+n).toFixed(1);
         const dd = n => { let x = new Date(); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10) };
         const toast = m => { const e = $("#toast"); e.textContent = m; e.style.display = "block"; setTimeout(() => e.style.display = "none", 2800) };
+        let TOKEN = ""; try { TOKEN = sessionStorage.getItem("ks_token") || "" } catch (e) { }
+        function setToken(t) { TOKEN = t; try { t ? sessionStorage.setItem("ks_token", t) : sessionStorage.removeItem("ks_token") } catch (e) { } }
         async function api(p, m = "GET", b) {
-            const r = await fetch(p, { method: m, headers: { "Content-Type": "application/json" }, body: b ? JSON.stringify(b) : undefined }); const j = await r.json().catch(() => ({}));
+            const r = await fetch(p, { method: m, headers: { "Content-Type": "application/json", ...(TOKEN ? { Authorization: "Bearer " + TOKEN } : {}) }, body: b ? JSON.stringify(b) : undefined }); const j = await r.json().catch(() => ({}));
+            if (r.status == 401 && TOKEN && p != "/login") { setToken(""); showLogin("Your session ended. Please log in again.") }
             if (!r.ok) throw new Error(typeof j.detail == "string" ? j.detail : JSON.stringify(j.detail || r.statusText)); return j
         }
         const ST = ["PLACED", "FUNDED", "HARVESTED", "SHIPPED", "DELIVERED", "RELEASED"];
@@ -1006,7 +1024,7 @@
         const opt = (a, s) => a.map(x => `<option ${x == s ? "selected" : ""}>${x}</option>`).join("");
         function ordCard(o) {
             const i = Math.max(0, ST.indexOf(o.state)), bad = ["DISPUTED", "REFUNDED", "CANCELLED"].includes(o.state);
-            return `<div class="card"><div class="row" style="align-items:center"><div><h3>#${o.id} · ${o.crop} · ${o.qty} kg</h3><div class="mu">${o.buyer} → ${o.farmer}</div></div><div><b>${fm(o.amount)}</b> <span class="tag">${o.state}</span>${o.payout != null ? `<div class="mu">You receive ${fm(o.payout)} after commission</div>` : ""}</div></div>
+            return `<div class="card"><div class="row" style="align-items:center"><div><h3>#${o.id} · ${escH(o.crop)} · ${o.qty} kg</h3><div class="mu">${escH(o.buyer)} → ${escH(o.farmer)}</div></div><div><b>${fm(o.amount)}</b> <span class="tag">${o.state}</span>${o.payout != null ? `<div class="mu">You receive ${fm(o.payout)} after commission</div>` : ""}</div></div>
 <div class="steps">${ST.map((_, j) => `<i class="${j <= i && !bad ? "d" : ""}"></i>`).join("")}</div>${btns(o)}<button class="b s" onclick="led(${o.id})">Audit ledger</button><div id="lg${o.id}" class="lg"></div></div>`
         }
         const PERM = { farmer: ["harvest", "ship", "cancel", "refund", "dispute"], buyer: ["fund", "cancel", "deliver", "release", "dispute"], admin: ["release", "refund"] };
@@ -1024,8 +1042,8 @@
         async function led(id) { const r = await api(`/orders/${id}/ledger?view=${R}`); $("#lg" + id).innerHTML = r.map(e => `${e.event} · ${e.ts.slice(0, 19)} · hash ${e.hash.slice(0, 10)} ← prev ${e.prev_hash.slice(0, 10)}`).join("<br>") }
         let MR = {}, TK = {}, LST = {};
         const BT = ["Restaurant", "Hotel", "Supermarket", "Exporter", "Personal use", "Other"];
-        function tkCard(t) { const s = t.status; return `<div class="card"><div class="row" style="align-items:center"><div><h3>#${t.id} · ${t.crop} · ${t.variety}</h3><div class="mu">${t.farmer ? t.farmer + " · " : ""}${t.qty} kg${t.notes ? " · " + t.notes : ""}</div></div><div><span class="tag">${s}</span></div></div>${mediaLine(t)}${s == "SCHEDULED" ? `<div class="mu">Our team will visit on ${t.visit_date}.</div>` : ""}${s == "APPROVED" ? `<div class="mu">Grade ${t.grade} · verified ${t.final_qty} kg · price agreed ${fk(t.price)}/kg${t.mandi_ref ? " · mandi that week " + fk(t.mandi_ref) : ""}. Your listing is live.</div>` : ""}${s == "REJECTED" || s == "UNPUBLISHED" ? `<div class="mu">Reason: ${t.reason || "not given"}</div>` : ""}${s == "APPROVED" && R == "admin" && t.listing_id ? `<button class="b s" onclick="unpub(${t.listing_id})">Undo publish</button>` : ""}${["OPEN", "SCHEDULED"].includes(s) && R == "farmer" ? `<button class="b s" onclick="cancelTk(${t.id})">Cancel ticket</button>` : ""}</div>` }
-        function liveCard(l) { return `<div class="card"><div class="row" style="align-items:center"><div><h3>#${l.id} · ${l.crop}${l.variety ? " · " + l.variety : ""}${l.grade ? " · Grade " + l.grade : ""}</h3><div class="mu">${l.farmer_name || ""} · ${l.qty} kg left · farmer price ${fk(l.price)}/kg</div></div><div><button class="b s" onclick="unpub(${l.id})">Undo publish</button></div></div></div>` }
+        function tkCard(t) { const s = t.status; return `<div class="card"><div class="row" style="align-items:center"><div><h3>#${t.id} · ${escH(t.crop)} · ${escH(t.variety)}</h3><div class="mu">${escH(t.farmer) ? escH(t.farmer) + " · " : ""}${t.qty} kg${escH(t.notes) ? " · " + escH(t.notes) : ""}</div></div><div><span class="tag">${s}</span></div></div>${mediaLine(t)}${s == "SCHEDULED" ? `<div class="mu">Our team will visit on ${t.visit_date}.</div>` : ""}${s == "APPROVED" ? `<div class="mu">Grade ${t.grade} · verified ${t.final_qty} kg · price agreed ${fk(t.price)}/kg${t.mandi_ref ? " · mandi that week " + fk(t.mandi_ref) : ""}. Your listing is live.</div>` : ""}${s == "REJECTED" || s == "UNPUBLISHED" ? `<div class="mu">Reason: ${escH(t.reason) || "not given"}</div>` : ""}${s == "APPROVED" && R == "admin" && t.listing_id ? `<button class="b s" onclick="unpub(${t.listing_id})">Undo publish</button>` : ""}${["OPEN", "SCHEDULED"].includes(s) && R == "farmer" ? `<button class="b s" onclick="cancelTk(${t.id})">Cancel ticket</button>` : ""}</div>` }
+        function liveCard(l) { return `<div class="card"><div class="row" style="align-items:center"><div><h3>#${l.id} · ${escH(l.crop)}${escH(l.variety) ? " · " + escH(l.variety) : ""}${l.grade ? " · Grade " + l.grade : ""}</h3><div class="mu">${escH(l.farmer_name) || ""} · ${l.qty} kg left · farmer price ${fk(l.price)}/kg</div></div><div><button class="b s" onclick="unpub(${l.id})">Undo publish</button></div></div></div>` }
         async function unpub(lid) {
             const r = prompt("Undo this publish?\nThe listing disappears for buyers. If it came from a ticket, the ticket reopens so you can correct it and approve again.\n\nOptional note:", ""); if (r === null) return;
             try { const x = await api(`/listings/${lid}/unpublish?reason=${encodeURIComponent(r)}`, "POST"); toast(x.status == "OPEN" ? "Unpublished. The ticket is open again." : "Listing unpublished."); go("tickets") } catch (e) { alert(e.message) }
@@ -1033,9 +1051,9 @@
         async function cancelTk(id) { if (!confirm("Cancel this ticket?")) return; try { await api(`/tickets/${id}/cancel`, "POST"); toast("Ticket cancelled"); go("farmer") } catch (e) { toast(e.message) } }
         function adminTk(t) {
             const m = MR[t.crop] || {}, id = t.id, md = t.media || []; TK[id] = t;
-            return `<div class="card"><div class="row" style="align-items:center"><div><h3>#${id} · ${t.crop} · ${t.variety}</h3><div class="mu">${t.farmer} (${t.loc || ""})<br>Farmer says available: ${t.qty} kg${t.notes ? " · " + t.notes : ""}<br>Farm: ${t.location || "–"}<br>Call: <b>${t.phone || "–"}</b>${t.alt_phone ? " · alt " + t.alt_phone : ""}<br>Farmer's preferred visit: <b>${t.pref_date || "–"}, ${t.pref_slot || ""}</b></div></div><div><span class="tag">${t.status}</span>${t.visit_date ? `<div class="mu">Visit ${t.visit_date}</div>` : ""}</div></div>
-${md.filter(x => x.kind == "video").map(x => `<video controls preload="metadata" style="width:100%;max-width:340px;border-radius:8px;margin-top:8px" src="/media/${x.id}"></video><div class="mu"><a href="/media/${x.id}" target="_blank">Open video in a new tab</a></div>`).join("")}
-<div>${md.filter(x => x.kind == "photo").map(x => `<a href="/media/${x.id}" target="_blank"><img loading="lazy" src="/media/${x.id}" style="width:84px;height:84px;object-fit:cover;border-radius:8px;margin:6px 6px 0 0"></a>`).join("")}</div>
+            return `<div class="card"><div class="row" style="align-items:center"><div><h3>#${id} · ${escH(t.crop)} · ${escH(t.variety)}</h3><div class="mu">${escH(t.farmer)} (${escH(t.loc) || ""})<br>Farmer says available: ${t.qty} kg${escH(t.notes) ? " · " + escH(t.notes) : ""}<br>Farm: ${escH(t.location) || "–"}<br>Call: <b>${t.phone || "–"}</b>${t.alt_phone ? " · alt " + t.alt_phone : ""}<br>Farmer's preferred visit: <b>${t.pref_date || "–"}, ${t.pref_slot || ""}</b></div></div><div><span class="tag">${t.status}</span>${t.visit_date ? `<div class="mu">Visit ${t.visit_date}</div>` : ""}</div></div>
+${md.filter(x => x.kind == "video").map(x => `<video controls preload="metadata" style="width:100%;max-width:340px;border-radius:8px;margin-top:8px" src="/media/${x.id}?t=${TOKEN}"></video><div class="mu"><a href="/media/${x.id}?t=${TOKEN}" target="_blank">Open video in a new tab</a></div>`).join("")}
+<div>${md.filter(x => x.kind == "photo").map(x => `<a href="/media/${x.id}?t=${TOKEN}" target="_blank"><img loading="lazy" src="/media/${x.id}?t=${TOKEN}" style="width:84px;height:84px;object-fit:cover;border-radius:8px;margin:6px 6px 0 0"></a>`).join("")}</div>
 <div class="mu" style="margin-top:6px">${m.latest != null ? `Current mandi ${fk(m.latest)}/kg (week of ${m.as_of}). Suggested farmer price: A ${fk(m.suggest.A)} · B ${fk(m.suggest.B)} · C ${fk(m.suggest.C)}` : "No mandi price found for this crop. Enter the price manually."}</div>
 <div class="row"><div><label>Visit date</label><input id="vd${id}" type="date" value="${t.visit_date || t.pref_date || ""}"></div><div><label>Grade</label><select id="gr${id}" onchange="gsel(${id})"><option>A</option><option selected>B</option><option>C</option></select></div><div><label>Verified qty (kg)</label><input id="vq${id}" type="number" value="${t.qty}"></div><div><label>Farmer price ₹/kg</label><input id="vp${id}" type="number" step="0.1" value="${m.latest != null ? m.suggest.B : ""}"></div></div>
 <div class="row"><div><label>Buyer's mandi cost ₹/kg (helper, not saved)</label><input id="mc${id}" type="number" step="0.1" oninput="mkHint(${id})"></div><div><label>Buyer markup % (blank = default)</label><input id="mk${id}" type="number" step="0.1" min="0" max="10" oninput="mkHint(${id})"></div><div><label>Early access hours (0 = none)</label><input id="eh${id}" type="number" min="0" max="720" value="0"></div></div><div class="mu" id="mh${id}">Enter the buyer's mandi cost to see the highest markup that keeps the free buyer below it.</div><label><input id="ag${id}" type="checkbox" style="width:auto"> Farmer has agreed to this price on the spot</label>
@@ -1081,12 +1099,12 @@ if (!/^(\+?91|0)?[6-9]\d{9}$/.test(ph.replace(/[\s-]/g, ""))) { alert("Please en
         <div style="font-size:28px;background:var(--pr2);width:46px;height:46px;border-radius:14px;display:grid;place-items:center">👨‍🌾</div>
         <div>
             <div style="font-size:12px;font-weight:700;color:var(--mu);text-transform:uppercase;letter-spacing:0.04em">Farmer Profile</div>
-            <b style="font-size:16px">${curFarmer.name || "Farmer"}</b> · <span class="mu">${curFarmer.loc || "Karnataka"}</span>
+            <b style="font-size:16px">${escH(curFarmer.name) || "Farmer"}</b> · <span class="mu">${escH(curFarmer.loc) || "Karnataka"}</span>
         </div>
     </div>
     <div style="display:flex;align-items:center;gap:8px">
         <label style="margin:0;font-size:12px;color:var(--mu);font-weight:600">Switch account:</label>
-        <select class="pill-select" onchange="fid=+this.value;go('farmer')">${F.map(f => `<option value="${f.id}" ${f.id == fid ? "selected" : ""}>${f.name} · ${f.loc}</option>`).join("")}</select>
+        <select class="pill-select" onchange="fid=+this.value;go('farmer')">${F.map(f => `<option value="${f.id}" ${f.id == fid ? "selected" : ""}>${escH(f.name)} · ${escH(f.loc)}</option>`).join("")}</select>
     </div>
 </div>
 
@@ -1142,7 +1160,7 @@ if (!/^(\+?91|0)?[6-9]\d{9}$/.test(ph.replace(/[\s-]/g, ""))) { alert("Please en
     <div class="row">
         <div>
             <label>Farm location (village, taluk, district)</label>
-            <input id="lc" value="${curFarmer.loc || ""}">
+            <input id="lc" value="${escH(curFarmer.loc) || ""}">
         </div>
         <div>
             <label>Contact mobile number</label>
@@ -1198,7 +1216,7 @@ ${farmerLs.map(l => {
             <span style="font-size:28px">${icon}</span>
             ${l.grade ? `<span class="tag">Grade ${l.grade}</span>` : ""}
         </div>
-        <h3 style="margin:0 0 4px">${l.crop}${l.variety ? " · " + l.variety : ""}</h3>
+        <h3 style="margin:0 0 4px">${escH(l.crop)}${escH(l.variety) ? " · " + escH(l.variety) : ""}</h3>
         <div class="mu" style="font-size:13px">${l.qty} kg available (${(l.qty / 100).toFixed(l.qty % 100 ? 1 : 0)} quintal)</div>
         <div class="big" style="color:var(--pr);margin:8px 0 4px">${fk(l.price)}/kg</div>
         <div class="mu" style="font-size:12px">${prem(l)}</div>
@@ -1226,7 +1244,7 @@ ${farmerOs.map(ordCard).join("") || '<p class="mu">No orders received yet.</p>'}
         function pickSg(i) { const [c, v] = SG[i], label = v ? `${c} · ${v}` : c; SEL = { crop: c, variety: v, label }; $("#c").value = label; $("#sb").style.display = "none" }
         function cropVar() { const raw = $("#c").value.trim(); if (SEL && SEL.label === raw) return SEL; const p = raw.split(/\s[·\-–]\s/); return { crop: p[0].trim(), variety: (p[1] || "").trim() } }
         const okPh = s => /^(\+?91|0)?[6-9]\d{9}$/.test(s.replace(/[\s-]/g, ""));
-        async function up(tid, kind, f) { const r = await fetch(`/tickets/${tid}/media?kind=${kind}&filename=${encodeURIComponent(f.name)}`, { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: f }); if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(typeof j.detail == "string" ? j.detail : "upload failed") } }
+        async function up(tid, kind, f) { const r = await fetch(`/tickets/${tid}/media?kind=${kind}&filename=${encodeURIComponent(f.name)}`, { method: "POST", headers: { "Content-Type": "application/octet-stream", ...(TOKEN ? { Authorization: "Bearer " + TOKEN } : {}) }, body: f }); if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(typeof j.detail == "string" ? j.detail : "upload failed") } }
         async function raiseTk() {
             const cv = cropVar(), kg = (+$("#q").value) * (+$("#un").value), ph = $("#ph").value.trim(), ph2 = $("#ph2").value.trim(), vid = $("#vid").files, pho = $("#pho").files;
             if (!cv.crop) { alert("Please enter your crop."); return }
@@ -1253,7 +1271,7 @@ ${farmerOs.map(ordCard).join("") || '<p class="mu">No orders received yet.</p>'}
             const P = sb.plans, ks = Object.keys(P); if (!P[SP]) SP = ks[0]; const m = P.monthly, y = P.yearly, pm = p => fm(p.price / p.days * 30), sv = m && y ? Math.round((1 - (y.price / y.days) / (m.price / m.days)) * 100) : 0,
                 F = [["✅", "Graded, verified listings", "Every lot is checked and graded by our team"], ["🔒", "Escrow-protected orders", "Your deposit is held until delivery"], ["↩️", "Free cancel for 15 minutes", "Fix a wrong order at no cost"], ["⭐", "Seller trust scores", "See each farmer's reliability"]];
             return (hero === false ? "" : `<div class="pl"><span class="lg2">KRISHI BAZAR PLUS</span><h1>${sb.active ? "Extend your membership" : "Join Krishi Bazar Plus"}</h1><p>Source graded, verified produce directly from farms.</p></div>`) +
-                `<div class="bn">${F.map(f => `<div><span>${f[0]}</span><div><b>${f[1]}</b><span class="mu">${f[2]}</span></div></div>`).join("")}</div><p class="mu">Members get early access to new listings and a lower service margin on every listing.</p><h2>Choose your plan</h2><div class="pc">${ks.map(k => { const p = P[k], b = k == "yearly" && sv > 0; return `<div class="pp ${k == SP ? "on" : ""}" onclick="pickPlan('${k}')">${b ? '<span class="tg">BEST VALUE</span>' : ""}<span class="rd"></span><h3>${p.name}</h3><div class="pr">${fm(p.price)} <small>/ ${p.days} days</small></div><div class="mu">≈ ${pm(p)} per month</div>${b ? `<div class="sv">Save ${sv}% vs monthly</div>` : ""}</div>` }).join("")}</div><div style="text-align:center"><button class="b ck" onclick="joinPlan()">${sb.active ? "Extend" : "Continue"} · Pay ${fm(P[SP].price)} (demo)</button><p class="mu">Demo payment: no real money moves. No auto-renewal.</p></div>`
+                `<div class="bn">${F.map(f => `<div><span>${f[0]}</span><div><b>${f[1]}</b><span class="mu">${f[2]}</span></div></div>`).join("")}</div><p class="mu">Members get early access to new listings and a lower service margin on every listing.</p><h2>Choose your plan</h2><div class="pc">${ks.map(k => { const p = P[k], b = k == "yearly" && sv > 0; return `<div class="pp ${k == SP ? "on" : ""}" onclick="pickPlan('${k}')">${b ? '<span class="tg">BEST VALUE</span>' : ""}<span class="rd"></span><h3>${escH(p.name)}</h3><div class="pr">${fm(p.price)} <small>/ ${p.days} days</small></div><div class="mu">≈ ${pm(p)} per month</div>${b ? `<div class="sv">Save ${sv}% vs monthly</div>` : ""}</div>` }).join("")}</div><div style="text-align:center"><button class="b ck" onclick="joinPlan()">${sb.active ? "Extend" : "Continue"} · Pay ${fm(P[SP].price)} (demo)</button><p class="mu">Demo payment: no real money moves. No auto-renewal.</p></div>`
         }
         function pickPlan(k) { SP = k; go(tab) }
         async function joinPlan() { try { await api(`/subscribe/${bid}/${SP}`, "POST"); toast("Welcome to Krishi Bazar Plus! (demo payment)"); go("buyer") } catch (e) { toast(e.message) } }
@@ -1262,20 +1280,20 @@ ${farmerOs.map(ordCard).join("") || '<p class="mu">No orders received yet.</p>'}
             const pl = Object.values(sb.plans).find(p => p.name == sb.plan) || { days: 30 }, d = Math.max(0, Math.ceil((new Date(sb.ends) - new Date()) / 864e5)), w = Math.min(100, Math.round(d / pl.days * 100));
             return `<div class="pl"><span class="lg2">PLUS MEMBER</span><h1>You're a member ✔</h1><p>${sb.plan} plan · valid until ${sb.ends}</p><div class="bar"><i style="width:${w}%"></i></div><p style="margin-top:6px;font-size:13px">${d} days left</p></div>` + planPage(sb, false)
         };
-        function subWall(B, sb) { return `<div class="card"><label>Buying as</label><select onchange="bid=+this.value;go('buyer')">${B.map(b => `<option value="${b.id}" ${b.id == bid ? "selected" : ""}>${b.name}</option>`).join("")}</select></div>` + planPage(sb) }
+        function subWall(B, sb) { return `<div class="card"><label>Buying as</label><select onchange="bid=+this.value;go('buyer')">${B.map(b => `<option value="${b.id}" ${b.id == bid ? "selected" : ""}>${escH(b.name)}</option>`).join("")}</select></div>` + planPage(sb) }
         async function subscribe(k) { try { await api(`/subscribe/${bid}/${k}`, "POST"); toast("Subscription active (demo payment)"); go("buyer") } catch (e) { toast(e.message) } }
         V.buyer = async () => {
             const B = U.filter(u => u.role == "buyer"); if (!B.length) return noSeed(); const sb = await api(`/subscription/${bid}`); const ls = await api(`/listings?view=buyer&buyer_id=${bid}&crop=${encodeURIComponent(fc)}&loc=${encodeURIComponent(fl)}`); const locs = [...new Set(U.filter(u => u.role == "farmer").map(u => u.loc))];
-            return `<div class="mu" style="margin-bottom:8px">${sb.active ? "✔ Subscribed (" + sb.plan + ") until " + sb.ends + " · lower markup and early access" : "Free buyer: no early access. Subscribe for a lower markup and early access: " + Object.entries(sb.plans).map(([k, p]) => `<button class="b s" onclick="subscribe('${k}')">${p.name} ${fm(p.price)}</button>`).join(" ")} · Minimum order for your buyer type: ${sb.min_order} kg</div><div class="card"><div class="row"><div><label>Buying as</label><select onchange="bid=+this.value;go('buyer')">${B.map(b => `<option value="${b.id}" ${b.id == bid ? "selected" : ""}>${b.name}</option>`).join("")}</select></div>
+            return `<div class="mu" style="margin-bottom:8px">${sb.active ? "✔ Subscribed (" + sb.plan + ") until " + sb.ends + " · lower markup and early access" : "Free buyer: no early access. Subscribe for a lower markup and early access: " + Object.entries(sb.plans).map(([k, p]) => `<button class="b s" onclick="subscribe('${k}')">${escH(p.name)} ${fm(p.price)}</button>`).join(" ")} · Minimum order for your buyer type: ${sb.min_order} kg</div><div class="card"><div class="row"><div><label>Buying as</label><select onchange="bid=+this.value;go('buyer')">${B.map(b => `<option value="${b.id}" ${b.id == bid ? "selected" : ""}>${escH(b.name)}</option>`).join("")}</select></div>
 <div><label>Crop</label><select onchange="fc=this.value;go('buyer')"><option value="">All crops</option>${opt(M.crops, fc)}</select></div><div><label>Location</label><select onchange="fl=this.value;go('buyer')"><option value="">All locations</option>${opt(locs, fl)}</select></div><div><label>Grade</label><select onchange="FG=this.value;go('buyer')"><option value="">All grades</option>${["A", "B", "C"].map(g => `<option ${g == FG ? "selected" : ""}>${g}</option>`).join("")}</select></div></div></div>
 <div class="grid">${ls.filter(l => !FG || l.grade === FG).map(l => {
-                const r = l.farmer_reliability; LST[l.id] = l; return `<div class="card"><h3>${l.crop}${l.variety ? " · " + l.variety : ""}${l.grade ? ` <span class="tag">Grade ${l.grade}</span>` : ""} <span class="tag">${l.loc}</span></h3><div class="mu">${l.farmer_name} · trust ${r.lower} (${r.n} deals) <br>${l.qty} kg available</div><div class="big">${fk(l.price)}/kg</div><div class="mu">${prem(l)}</div>
+                const r = l.farmer_reliability; LST[l.id] = l; return `<div class="card"><h3>${escH(l.crop)}${escH(l.variety) ? " · " + escH(l.variety) : ""}${l.grade ? ` <span class="tag">Grade ${l.grade}</span>` : ""} <span class="tag">${escH(l.loc)}</span></h3><div class="mu">${escH(l.farmer_name)} · trust ${r.lower} (${r.n} deals) <br>${l.qty} kg available</div><div class="big">${fk(l.price)}/kg</div><div class="mu">${prem(l)}</div>
 ${earlyNote(l)}<div class="mu">${Math.min(sb.min_order, l.qty)} kg = <b>${fm(l.price * Math.min(sb.min_order, l.qty))}</b></div><label>Order qty (kg)</label><input id="oq${l.id}" type="number" value="${Math.min(sb.min_order, l.qty)}" min="${Math.min(sb.min_order, l.qty)}"><label>Deposit into escrow</label><select id="dp${l.id}"><option value="0.3">30%</option><option value="0.5">50%</option><option value="1">100%</option></select>${l.locked_for_you ? `<button class="b" disabled>Opens to you at ${opensAt(l)}</button>` : `<button class="b" onclick="order(${l.id})">Order &amp; pay deposit (demo)</button>`}</div>`
             }).join("") || '<p class="mu">No listings match.</p>'}</div>`
         };
         async function order(id) {
             const q = (LST[id] || {}).qty; if (!q) return;
-            const l = LST[id] || {}; if (!confirm(`Buy the whole lot, ${q} kg of ${l.crop || "this crop"}${l.variety ? " (" + l.variety + ")" : ""}${l.grade ? ", Grade " + l.grade : ""} for about ${fm((l.price || 0) * q)}?\nYou can cancel free within 15 minutes.`)) return;
+            const l = LST[id] || {}; if (!confirm(`Buy the whole lot, ${q} kg of ${escH(l.crop) || "this crop"}${escH(l.variety) ? " (" + escH(l.variety) + ")" : ""}${l.grade ? ", Grade " + l.grade : ""} for about ${fm((l.price || 0) * q)}?\nYou can cancel free within 15 minutes.`)) return;
             try { const o = await api("/orders", "POST", { listing_id: id, buyer_id: bid, qty: q, deposit_pct: +$("#dp" + id).value }); await api(`/orders/${o.id}/fund`, "POST"); toast("Deposit held in escrow (demo, no real money)"); go("orders") } catch (e) { if (/Minimum/.test(e.message)) alert(e.message); else toast(e.message) }
         }
         const memWrap = V.buyer; V.buyer = async () => { const h = await memWrap(); if (typeof h !== "string" || h.includes('class="ms"')) return h; try { const sb = await api(`/subscription/${bid}`); return sb.active ? memStrip(sb) + h : h } catch (e) { return h } };
@@ -1294,8 +1312,8 @@ ${earlyNote(l)}<div class="mu">${Math.min(sb.min_order, l.qty)} kg = <b>${fm(l.p
             const [s, os] = await Promise.all([api("/admin/summary"), api("/orders?view=admin")]);
             return `<div class="stats"><div class="card"><div class="mu">Users</div><div class="big">${s.users}</div></div><div class="card"><div class="mu">Orders</div><div class="big">${s.orders}</div></div><div class="card"><div class="mu">Paid out (released)</div><div class="big">${fm(s.gmv_released)}</div></div><div class="card"><div class="mu">Farmer commission</div><div class="big">${fm(s.platform_fee)}</div></div><div class="card"><div class="mu">Buyer-side margin</div><div class="big">${fm(s.buyer_margin)}</div></div><div class="card"><div class="mu">Subscriptions</div><div class="big">${fm(s.subscription_revenue)}</div></div><div class="card"><div class="mu">Avg farmer premium vs forecast mandi</div><div class="big">${s.avg_farmer_premium_pct == null ? "–" : "+" + s.avg_farmer_premium_pct + "%"}</div></div></div>
 <div class="card"><button class="b" onclick="ver()">Verify ledger integrity</button> <span id="vr" class="mu">Ledger intact: ${s.ledger_intact ? "yes" : "NO"}</span></div>
-<div class="card tw"><h2>Users</h2><table><tr><th>Name</th><th>Role</th><th>Type</th><th>Location</th></tr>${U.map(u => `<tr><td>${u.name}</td><td>${u.role}</td><td>${u.buyer_type || ""}</td><td>${u.loc}</td></tr>`).join("")}</table></div>
-<div class="card tw"><h2>Orders</h2><table><tr><th>#</th><th>Crop</th><th>Farmer</th><th>Buyer</th><th>Kg</th><th>Farmer value</th><th>Buyer paid</th><th>State</th></tr>${os.map(o => `<tr><td>${o.id}</td><td>${o.crop}</td><td>${o.farmer}</td><td>${o.buyer}</td><td>${o.qty}</td><td>${fm(o.amount)}</td><td>${fm(o.buyer_amount)}</td><td>${o.state}</td></tr>`).join("")}</table></div>`
+<div class="card tw"><h2>Users</h2><table><tr><th>Name</th><th>Role</th><th>Type</th><th>Location</th></tr>${U.map(u => `<tr><td>${escH(u.name)}</td><td>${u.role}</td><td>${escH(u.buyer_type) || ""}</td><td>${escH(u.loc)}</td></tr>`).join("")}</table></div>
+<div class="card tw"><h2>Orders</h2><table><tr><th>#</th><th>Crop</th><th>Farmer</th><th>Buyer</th><th>Kg</th><th>Farmer value</th><th>Buyer paid</th><th>State</th></tr>${os.map(o => `<tr><td>${o.id}</td><td>${escH(o.crop)}</td><td>${escH(o.farmer)}</td><td>${escH(o.buyer)}</td><td>${o.qty}</td><td>${fm(o.amount)}</td><td>${fm(o.buyer_amount)}</td><td>${o.state}</td></tr>`).join("")}</table></div>`
         };
         async function ver() { const r = await api("/ledger/verify"); $("#vr").textContent = r.intact ? "Ledger intact: yes" : "TAMPERING detected at entry " + r.first_bad_id }
         const TABS = { farmer: ["farmer"], buyer: ["buyer", "member", "orders"], admin: ["admin", "tickets", "orders", "price"] };
@@ -1315,9 +1333,36 @@ ${earlyNote(l)}<div class="mu">${Math.min(sb.min_order, l.qty)} kg = <b>${fm(l.p
             $("#app").innerHTML = `<div class="loading-box"><div class="spinner"></div><span>Loading…</span></div>`;
             try { $("#app").innerHTML = await V[x](); after[x] && after[x]() } catch (e) { $("#app").innerHTML = `<div class="card">Error: ${e.message}</div>` }
         }
+        const escH = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+        let LGREG = false;
+        function showLogin(msg) { $("#login").style.display = "flex"; $("#lg-msg").textContent = msg || ""; document.querySelectorAll(".role-btn").forEach(b => b.style.display = "none"); $("#logbtn").style.display = "none"; $("#app").innerHTML = "" }
+        function lgRole() { $("#lg-bt").style.display = LGREG && $("#lg-role").value == "buyer" ? "block" : "none" }
+        function lgSwitch() { LGREG = !LGREG; $("#lg-reg").style.display = LGREG ? "block" : "none"; $("#lg-title").textContent = LGREG ? "Register" : "Log in"; $("#lg-go").textContent = LGREG ? "Register" : "Log in"; $("#lg-sw").textContent = LGREG ? "Already registered? Log in" : "New here? Register"; lgRole() }
+        async function lgGo() {
+            const phone = $("#lg-ph").value.trim(), password = $("#lg-pw").value;
+            if (!phone || !password) { $("#lg-msg").textContent = "Enter your mobile number and password."; return }
+            try {
+                let r;
+                if (LGREG) {
+                    const role = $("#lg-role").value, name = $("#lg-name").value.trim(), loc = $("#lg-loc").value.trim(), bt = $("#lg-type").value;
+                    if (!name || !loc) { $("#lg-msg").textContent = "Please enter your name and location."; return }
+                    if (role == "buyer" && !bt) { $("#lg-msg").textContent = "Please choose what you will use the crop for."; return }
+                    r = await api("/users", "POST", { name, role, loc, phone, password, buyer_type: role == "buyer" ? bt : "" });
+                } else { r = await api("/login", "POST", { phone, password }) }
+                setToken(r.token); $("#lg-pw").value = ""; await afterLogin();
+            } catch (e) { $("#lg-msg").textContent = e.message }
+        }
+        async function afterLogin() {
+            const me = await api("/me"); R = me.role; U = await api("/users");
+            fid = R == "farmer" ? me.id : 0; bid = R == "buyer" ? me.id : 0;
+            $("#login").style.display = "none"; $("#logbtn").style.display = "";
+            document.querySelectorAll(".role-btn").forEach(b => b.style.display = b.getAttribute("data-role") == R ? "" : "none");
+            setRole(R);
+        }
+        function logout() { setToken(""); location.reload() }
         (async () => {
             try {
-                M = await api("/meta"); U = await api("/users"); fid = (U.find(u => u.role == "farmer") || {}).id; bid = (U.find(u => u.role == "buyer") || {}).id; pc = M.crops[0];
+                M = await api("/meta"); pc = M.crops[0]; if (TOKEN) { try { await afterLogin() } catch (e) { setToken(""); showLogin() } } else { showLogin() }
                 $("#badge").className = M.synthetic ? "w" : ""; $("#badge").textContent = M.synthetic ? "⚠ SYNTHETIC price data – demo only, not real results" : `✔ Real mandi price data · ${M.rows.toLocaleString()} rows · ${M.from} → ${M.to} · users, listings & orders are demo seed data`; go("farmer")
             }
             catch (e) { $("#app").innerHTML = `<div class="card">Cannot reach the API: ${e.message}. Is <code>uvicorn app.main:app</code> running, and does data/prices.csv exist?</div>` }
@@ -1359,10 +1404,10 @@ ${earlyNote(l)}<div class="mu">${Math.min(sb.min_order, l.qty)} kg = <b>${fm(l.p
                 const top = sb.active ? (typeof memStrip == "function" ? memStrip(sb) : `<div class="mu">✔ Plus member until ${sb.ends}</div>`) : `<div class="card" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><div style="flex:1;min-width:220px"><b>Free plan</b><div class="mu">Plus members pay a lower service margin on every listing and see new listings first.</div></div><button class="b" onclick="go('member')">See Plus</button></div>`;
                 const filtered = sortedLs.filter(l => !FG || l.grade === FG);
 
-                return top + `<div class="card"><div class="row"><div><label>Buying as</label><select onchange="bid=+this.value;go('buyer')">${B.map(b => `<option value="${b.id}" ${b.id == bid ? "selected" : ""}>${b.name}</option>`).join("")}</select></div><div><label>Crop</label><select onchange="fc=this.value;go('buyer')"><option value="">All crops</option>${opt(M.crops, fc)}</select></div><div><label>Location</label><select onchange="fl=this.value;go('buyer')"><option value="">All locations</option>${opt(locs, fl)}</select></div><div><label>Grade</label><select onchange="FG=this.value;go('buyer')"><option value="">All grades</option>${["A", "B", "C"].map(g => `<option ${g == FG ? "selected" : ""}>${g}</option>`).join("")}</select></div><div><label>Sort listings</label><select onchange="window.BSORT=this.value;go('buyer')"><option value="newest" ${(window.BSORT||"newest")=="newest"?"selected":""}>⚡ Latest listings first</option><option value="price_asc" ${window.BSORT=="price_asc"?"selected":""}>💵 Price: Low to High</option><option value="price_desc" ${window.BSORT=="price_desc"?"selected":""}>💎 Price: High to Low</option><option value="qty_desc" ${window.BSORT=="qty_desc"?"selected":""}>📦 Quantity: Large lots</option><option value="trust_desc" ${window.BSORT=="trust_desc"?"selected":""}>⭐ Farmer trust: Highest</option></select></div></div></div><div style="display:flex;justify-content:space-between;align-items:center;margin:18px 0 10px"><h2 style="margin:0">Available farm lots (${filtered.length})</h2><span class="mu" style="font-weight:600">⚡ Latest listings appear on top</span></div><div class="grid">${filtered.map((l, i) => {
+                return top + `<div class="card"><div class="row"><div><label>Buying as</label><select onchange="bid=+this.value;go('buyer')">${B.map(b => `<option value="${b.id}" ${b.id == bid ? "selected" : ""}>${escH(b.name)}</option>`).join("")}</select></div><div><label>Crop</label><select onchange="fc=this.value;go('buyer')"><option value="">All crops</option>${opt(M.crops, fc)}</select></div><div><label>Location</label><select onchange="fl=this.value;go('buyer')"><option value="">All locations</option>${opt(locs, fl)}</select></div><div><label>Grade</label><select onchange="FG=this.value;go('buyer')"><option value="">All grades</option>${["A", "B", "C"].map(g => `<option ${g == FG ? "selected" : ""}>${g}</option>`).join("")}</select></div><div><label>Sort listings</label><select onchange="window.BSORT=this.value;go('buyer')"><option value="newest" ${(window.BSORT||"newest")=="newest"?"selected":""}>⚡ Latest listings first</option><option value="price_asc" ${window.BSORT=="price_asc"?"selected":""}>💵 Price: Low to High</option><option value="price_desc" ${window.BSORT=="price_desc"?"selected":""}>💎 Price: High to Low</option><option value="qty_desc" ${window.BSORT=="qty_desc"?"selected":""}>📦 Quantity: Large lots</option><option value="trust_desc" ${window.BSORT=="trust_desc"?"selected":""}>⭐ Farmer trust: Highest</option></select></div></div></div><div style="display:flex;justify-content:space-between;align-items:center;margin:18px 0 10px"><h2 style="margin:0">Available farm lots (${filtered.length})</h2><span class="mu" style="font-weight:600">⚡ Latest listings appear on top</span></div><div class="grid">${filtered.map((l, i) => {
                     const r = l.farmer_reliability, mn = l.qty; LST[l.id] = l;
                     const isNew = (l.live_at && (Date.now() - new Date(l.live_at).getTime() < 48 * 36e5)) || i < 2;
-                    return `<div class="card" style="display:flex;flex-direction:column;justify-content:space-between"><div><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px"><h3>${CROP_ICONS[l.crop] || "🌾"} ${l.crop}${l.variety ? " · " + l.variety : ""}</h3>${isNew ? '<span class="tag tag-new">⚡ JUST IN</span>' : ""}</div><div style="display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 10px">${l.grade ? `<span class="tag" style="${l.grade=='A'?'background:#dcfce7;color:#15803d;border:1px solid #86efac':l.grade=='B'?'background:#fef3c7;color:#b45309;border:1px solid #fde68a':'background:#f1f5f9;color:#475569'}">Grade ${l.grade}</span>` : ""}<span class="tag">📍 ${l.loc}</span>${l.subscriber_rate ? '<span class="tag" style="background:#e0f2fe;color:#0284c7">Plus price</span>' : ""}</div><div class="mu" style="margin-bottom:10px"><b>${l.farmer_name}</b> · <span class="tag" style="padding:2px 8px;font-size:11px">⭐ trust ${r.lower}</span> · ${r.n} deals<br><span style="color:var(--tx);font-weight:600">${l.qty.toLocaleString()} kg available</span></div><div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px"><div class="big">${fk(l.price)}/kg</div><div class="mu">${prem(l)}</div></div><div style="background:var(--bd-subtle);border:1px solid var(--bd);border-radius:12px;padding:10px 14px;font-size:14px;font-weight:700;margin:8px 0">Whole lot: ${l.qty.toLocaleString()} kg = ${fm(l.price * l.qty)}</div><div style="font-size:12px;color:var(--pr);font-weight:600;margin:6px 0">🛡️ 100% Escrow protected · Free cancel 15m</div>${earlyNote(l)}</div>` + (l.locked_for_you ? "" : `<div style="margin-top:10px"><div class="mu" style="display:none">You buy the whole lot.</div><label>Deposit into escrow</label><select id="dp${l.id}"><option value="0.3">30% Deposit (Escrow Protected)</option><option value="0.5">50% Deposit</option><option value="1">100% Full Payment</option></select><button class="b" style="width:100%;margin-top:10px" onclick="order(${l.id})">🛒 Order &amp; pay deposit (demo)</button></div>`) + `</div>`
+                    return `<div class="card" style="display:flex;flex-direction:column;justify-content:space-between"><div><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px"><h3>${CROP_ICONS[escH(l.crop)] || "🌾"} ${escH(l.crop)}${escH(l.variety) ? " · " + escH(l.variety) : ""}</h3>${isNew ? '<span class="tag tag-new">⚡ JUST IN</span>' : ""}</div><div style="display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 10px">${l.grade ? `<span class="tag" style="${l.grade=='A'?'background:#dcfce7;color:#15803d;border:1px solid #86efac':l.grade=='B'?'background:#fef3c7;color:#b45309;border:1px solid #fde68a':'background:#f1f5f9;color:#475569'}">Grade ${l.grade}</span>` : ""}<span class="tag">📍 ${escH(l.loc)}</span>${l.subscriber_rate ? '<span class="tag" style="background:#e0f2fe;color:#0284c7">Plus price</span>' : ""}</div><div class="mu" style="margin-bottom:10px"><b>${escH(l.farmer_name)}</b> · <span class="tag" style="padding:2px 8px;font-size:11px">⭐ trust ${r.lower}</span> · ${r.n} deals<br><span style="color:var(--tx);font-weight:600">${l.qty.toLocaleString()} kg available</span></div><div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px"><div class="big">${fk(l.price)}/kg</div><div class="mu">${prem(l)}</div></div><div style="background:var(--bd-subtle);border:1px solid var(--bd);border-radius:12px;padding:10px 14px;font-size:14px;font-weight:700;margin:8px 0">Whole lot: ${l.qty.toLocaleString()} kg = ${fm(l.price * l.qty)}</div><div style="font-size:12px;color:var(--pr);font-weight:600;margin:6px 0">🛡️ 100% Escrow protected · Free cancel 15m</div>${earlyNote(l)}</div>` + (l.locked_for_you ? "" : `<div style="margin-top:10px"><div class="mu" style="display:none">You buy the whole lot.</div><label>Deposit into escrow</label><select id="dp${l.id}"><option value="0.3">30% Deposit (Escrow Protected)</option><option value="0.5">50% Deposit</option><option value="1">100% Full Payment</option></select><button class="b" style="width:100%;margin-top:10px" onclick="order(${l.id})">🛒 Order &amp; pay deposit (demo)</button></div>`) + `</div>`
                 }).join("") || '<p class="mu">No listings match.</p>'}</div>`
             };
             window.bmWarn = function (id) {

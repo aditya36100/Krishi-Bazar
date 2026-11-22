@@ -17,5 +17,5 @@ def quote(forecast_kg, qty_kg, quality=1.0, farmer_fee_pct=1.0, buyer_fee_pct=5.
         buyer = mrp_kg * qty_kg
     return {"price_kg": round(price, 2), "gross": round(g, 2), "farmer_fee_pct": fee_pct,
             "farmer_payout": round(payout, 2), "buyer_pays": round(buyer, 2),
-            "platform_revenue": round(buyer - payout, 2), "mrp_capped": capped,
+            "platform_revenue": round(round(buyer, 2) - round(payout, 2), 2), "mrp_capped": capped,
             "loss_making": buyer < payout}
