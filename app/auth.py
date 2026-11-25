@@ -61,6 +61,7 @@ def read_token(tok: str):
 def ensure_admin():
     """Create or refresh the admin account from KS_ADMIN_USER (default 'admin') and KS_ADMIN_PASSWORD.
     Admin logs in with that username in the phone field. With no password set, there is no admin."""
+    return False  # demo mode: the admin password login is switched off
     pw = os.getenv("KS_ADMIN_PASSWORD", "")
     if not pw:
         return False
@@ -77,7 +78,29 @@ def ensure_admin():
     return True
 
 
+DEMO = os.getenv("KS_DEMO", "1") != "0"  # set KS_DEMO=0 to turn the no-login demo off
+
+
+def _demo_user(role):
+    """Demo mode: the token 'demo:<role>' acts as the first user with that role (made if missing)."""
+    if role not in ("farmer", "buyer", "admin"):
+        raise HTTPException(401, "Unknown demo role")
+    q = "SELECT id, name, role FROM users WHERE role=? ORDER BY id LIMIT 1"
+    with conn() as c:
+        r = c.execute(q, (role,)).fetchone()
+        if not r:
+            c.execute("INSERT INTO users(name,role,loc,phone) VALUES(?,?,?,?)", ("Demo " + role.title(), role, "Bengaluru", "demo-" + role))
+            r = c.execute(q, (role,)).fetchone()
+    return {"id": r["id"], "name": r["name"], "role": r["role"]}
+
+
 def _user_from(tok: str):
+    if DEMO and tok.startswith("demo:"):
+        return _demo_user(tok[5:])
+    return _user_from_token(tok)
+
+
+def _user_from_token(tok: str):
     d = read_token(tok) if tok else None
     if not d:
         raise HTTPException(401, "Please log in")
